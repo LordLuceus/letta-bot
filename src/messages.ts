@@ -41,9 +41,7 @@ export async function sendTimerMessage() {
   };
 
   try {
-    logger.info(
-      `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
-    );
+    logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
     const response = await client.agents.messages.create(AGENT_ID, {
       messages: [lettaMessage],
     });
@@ -76,25 +74,16 @@ export async function sendMessage(
   // We also include the Discord ID so that the agent can tag the user with @
   const senderNameReceipt = `${nickname} (id=${senderId})`;
 
-  const channelName =
-    "name" in discordMessageObject.channel
-      ? discordMessageObject.channel.name || ""
-      : "";
+  const channelName = "name" in discordMessageObject.channel ? discordMessageObject.channel.name || "" : "";
 
   let originalMessage = "";
 
-  if (
-    messageType === MessageType.REPLY &&
-    discordMessageObject.reference?.messageId
-  ) {
+  if (messageType === MessageType.REPLY && discordMessageObject.reference?.messageId) {
     // If the message is a reply, we try to fetch the original message
-    const originalMessageObject =
-      await discordMessageObject.channel.messages.fetch(
-        discordMessageObject.reference.messageId,
-      );
-    const originalSenderNickname =
-      originalMessageObject.member?.nickname ||
-      originalMessageObject.author.displayName;
+    const originalMessageObject = await discordMessageObject.channel.messages.fetch(
+      discordMessageObject.reference.messageId,
+    );
+    const originalSenderNickname = originalMessageObject.member?.nickname || originalMessageObject.author.displayName;
     originalMessage = `${originalSenderNickname} (id=${originalMessageObject.author.id}): ${truncateMessage(originalMessageObject.content, 100)}`;
   }
 
@@ -121,9 +110,7 @@ export async function sendMessage(
   };
 
   try {
-    logger.info(
-      `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
-    );
+    logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
     const response = await client.agents.messages.create(AGENT_ID, {
       messages: [lettaMessage],
     });
@@ -147,10 +134,7 @@ async function processResponse(response: LettaResponse): Promise<string> {
 
   for (const message of response.messages) {
     if (message.messageType === "tool_call_message") {
-      if (
-        message.toolCall.name === "send_response" &&
-        message.toolCall.arguments
-      ) {
+      if (message.toolCall.name === "send_response" && message.toolCall.arguments) {
         const args: SendResponseArgs = JSON.parse(message.toolCall.arguments);
 
         if (!args.is_responding) {
