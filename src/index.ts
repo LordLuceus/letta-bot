@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import "dotenv/config";
-import { MessageType, sendMessage } from "./messages.js";
+import { MessageType, sendMessage } from "./messages";
 
 const client = new Client({
   intents: [

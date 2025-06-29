@@ -16,7 +16,6 @@
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.12.4",
-  "type": "module",
   "dependencies": {
     "@letta-ai/letta-client": "^0.1.140",
     "discord.js": "^14.21.0",

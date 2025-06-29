@@ -96,16 +96,26 @@ export async function sendMessage(
     originalMessage = `${originalSenderNickname} (id=${originalMessageObject.author.id}): ${truncateMessage(originalMessageObject.content, 100)}`;
   }
 
+  let content: string;
+
+  switch (messageType) {
+    case MessageType.DM:
+      content = `[${senderNameReceipt} sent you a direct message] ${message}`;
+      break;
+    case MessageType.MENTION:
+      content = `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}`;
+      break;
+    case MessageType.REPLY:
+      content = `[${senderNameReceipt} replied to message: ${originalMessage} in channel ${channelName}] ${message}`;
+      break;
+    default:
+      content = `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}`;
+      break;
+  }
+
   const lettaMessage = {
     role: "user" as const,
-    content:
-      messageType === MessageType.MENTION
-        ? `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}`
-        : messageType === MessageType.REPLY
-          ? `[${senderNameReceipt} replied to previous message: ${originalMessage}] ${message}`
-          : messageType === MessageType.DM
-            ? `[${senderNameReceipt} sent you a direct message] ${message}`
-            : `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}`,
+    content,
   };
 
   try {
