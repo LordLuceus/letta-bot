@@ -58,9 +58,12 @@ export async function sendMessage(
   messageType: MessageType
 ) {
   const {
-    author: { id: senderId, displayName: nickname },
+    author: { id: senderId, displayName },
     content: message,
   } = discordMessageObject;
+
+  // Use server nickname for guild messages, fallback to displayName for DMs
+  const nickname = discordMessageObject.member?.nickname || displayName;
 
   if (!AGENT_ID) {
     console.error("Error: LETTA_AGENT_ID is not set");
