@@ -90,7 +90,10 @@ export async function sendMessage(
       await discordMessageObject.channel.messages.fetch(
         discordMessageObject.reference.messageId
       );
-    originalMessage = truncateMessage(originalMessageObject.content, 100) || "";
+    const originalSenderNickname =
+      originalMessageObject.member?.nickname ||
+      originalMessageObject.author.displayName;
+    originalMessage = `${originalSenderNickname} (id=${originalMessageObject.author.id}): ${truncateMessage(originalMessageObject.content, 100)}`;
   }
 
   const lettaMessage = {
