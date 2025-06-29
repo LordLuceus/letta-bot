@@ -1,6 +1,7 @@
 import { LettaClient } from "@letta-ai/letta-client";
 import { LettaResponse } from "@letta-ai/letta-client/api/types";
 import { Message, OmitPartialGroupDMChannel } from "discord.js";
+import logger from "./logger";
 
 const client = new LettaClient({
   token: process.env.LETTA_TOKEN || "dummy",
@@ -15,8 +16,9 @@ export enum MessageType {
   GENERIC = "GENERIC",
 }
 
-interface IndicateResponseArgs {
+interface SendResponseArgs {
   is_responding: boolean;
+  message: string;
 }
 
 function truncateMessage(message: string, maxLength: number): string {
@@ -28,7 +30,7 @@ function truncateMessage(message: string, maxLength: number): string {
 
 export async function sendTimerMessage() {
   if (!AGENT_ID) {
-    console.error("Error: LETTA_AGENT_ID is not set");
+    logger.error("Error: LETTA_AGENT_ID is not set");
     return "";
   }
 
@@ -39,8 +41,8 @@ export async function sendTimerMessage() {
   };
 
   try {
-    console.log(
-      `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`
+    logger.info(
+      `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
     );
     const response = await client.agents.messages.create(AGENT_ID, {
       messages: [lettaMessage],
@@ -48,14 +50,14 @@ export async function sendTimerMessage() {
 
     return response || "";
   } catch (error) {
-    console.error(error);
+    logger.error(error);
     return "";
   }
 }
 
 export async function sendMessage(
   discordMessageObject: OmitPartialGroupDMChannel<Message<boolean>>,
-  messageType: MessageType
+  messageType: MessageType,
 ) {
   const {
     author: { id: senderId, displayName },
@@ -66,7 +68,7 @@ export async function sendMessage(
   const nickname = discordMessageObject.member?.nickname || displayName;
 
   if (!AGENT_ID) {
-    console.error("Error: LETTA_AGENT_ID is not set");
+    logger.error("Error: LETTA_AGENT_ID is not set");
     return "";
   }
 
@@ -88,7 +90,7 @@ export async function sendMessage(
     // If the message is a reply, we try to fetch the original message
     const originalMessageObject =
       await discordMessageObject.channel.messages.fetch(
-        discordMessageObject.reference.messageId
+        discordMessageObject.reference.messageId,
       );
     const originalSenderNickname =
       originalMessageObject.member?.nickname ||
@@ -119,8 +121,8 @@ export async function sendMessage(
   };
 
   try {
-    console.log(
-      `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`
+    logger.info(
+      `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
     );
     const response = await client.agents.messages.create(AGENT_ID, {
       messages: [lettaMessage],
@@ -132,42 +134,32 @@ export async function sendMessage(
 
     return "";
   } catch (error) {
-    console.error(error);
+    logger.error(error);
     return "";
   }
 }
 
 async function processResponse(response: LettaResponse): Promise<string> {
   if (!response || !response.messages || response.messages.length === 0) {
-    console.error("No messages in response");
+    logger.error("No messages in response");
     return "";
   }
 
   for (const message of response.messages) {
     if (message.messageType === "tool_call_message") {
       if (
-        message.toolCall.name === "indicate_response" &&
+        message.toolCall.name === "send_response" &&
         message.toolCall.arguments
       ) {
-        const args: IndicateResponseArgs = JSON.parse(
-          message.toolCall.arguments
-        );
+        const args: SendResponseArgs = JSON.parse(message.toolCall.arguments);
 
         if (!args.is_responding) {
           return "";
         }
-        continue;
-      }
-    } else if (message.messageType === "assistant_message") {
-      if (typeof message.content === "string") {
-        const content = message.content.trim();
-        if (content) {
-          console.log(`🛜 Received message from Letta server: ${content}`);
-          return content;
-        }
+        return args.message;
       }
     }
   }
-  console.error("No message found in response");
+  logger.error("No message found in response");
   return "";
 }

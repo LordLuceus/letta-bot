@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import "dotenv/config";
 import { MessageType, sendMessage } from "./messages";
+import logger from "./logger";
 
 const client = new Client({
   intents: [
@@ -13,7 +14,7 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, () => {
-  console.log("Ready!");
+  logger.info("Discord bot is ready!");
 });
 
 client.on(Events.MessageCreate, async (message) => {
