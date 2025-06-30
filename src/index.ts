@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import "dotenv/config";
 import logger from "./logger";
 import { MessageType, sendMessage } from "./messages";
+import { chunkString } from "./util/chunkString";
 
 const client = new Client({
   intents: [
@@ -45,8 +46,17 @@ client.on(Events.MessageCreate, async (message) => {
   // Add a small random delay to simulate typing
   const delay = Math.floor(Math.random() * 2000) + 1000; // Between 1 and 3 seconds
   setTimeout(async () => {
+    // Split response into chunks if it exceeds Discord's 2000 character limit
+    const chunks = chunkString(response, ["\n\n", "\n", ". ", " "], 2000);
+
     try {
-      await message.channel.send(response);
+      for (const chunk of chunks) {
+        await message.channel.send(chunk);
+        // Small delay between chunks to avoid rate limiting
+        if (chunks.length > 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
     } catch (error) {
       logger.error("Failed to send message to channel:", error);
 
@@ -58,7 +68,12 @@ client.on(Events.MessageCreate, async (message) => {
           );
 
           if (generalChannel && generalChannel.isTextBased()) {
-            await generalChannel.send(response);
+            for (const chunk of chunks) {
+              await generalChannel.send(chunk);
+              if (chunks.length > 1) {
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              }
+            }
             logger.info("Successfully sent message to general channel as fallback");
           } else {
             logger.error("Could not find general channel for fallback");
