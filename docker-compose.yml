@@ -1,0 +1,7 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    container_name: professor_bot
+    env_file:
+      - .env
