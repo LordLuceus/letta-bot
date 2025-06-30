@@ -11,7 +11,7 @@
     "lint:fix": "eslint ./src --ext .ts --fix",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "keywords": [],
   "author": "",
