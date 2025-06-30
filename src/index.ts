@@ -1,7 +1,7 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import "dotenv/config";
-import { MessageType, sendMessage } from "./messages";
 import logger from "./logger";
+import { MessageType, sendMessage } from "./messages";
 
 const client = new Client({
   intents: [
@@ -18,8 +18,6 @@ client.once(Events.ClientReady, () => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot) return;
-
   if (message.author.id === client.user?.id) return; // Ignore messages from the bot itself
 
   let messageType: MessageType;
