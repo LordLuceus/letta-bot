@@ -3,6 +3,7 @@ import "dotenv/config";
 import logger from "./logger";
 import { MessageType, sendMessage } from "./messages";
 import { chunkString } from "./util/chunkString";
+import { startRandomEventTimer } from "./eventTimer";
 
 export const client = new Client({
   intents: [
@@ -16,6 +17,7 @@ export const client = new Client({
 
 client.once(Events.ClientReady, () => {
   logger.info("Discord bot is ready!");
+  startRandomEventTimer();
 });
 
 client.on(Events.MessageCreate, async (message) => {

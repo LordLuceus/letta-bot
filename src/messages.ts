@@ -181,6 +181,7 @@ async function processResponse(response: LettaResponse): Promise<string> {
         } catch (error) {
           logger.error("Failed to set Discord status:", error);
         }
+        return "";
       }
     }
   }

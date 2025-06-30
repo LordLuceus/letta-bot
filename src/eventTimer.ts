@@ -14,7 +14,7 @@ export async function startRandomEventTimer() {
   }
 
   // Set a minimum delay to prevent too-frequent firing (at least 1 minute)
-  const minMinutes = 5;
+  const minMinutes = 1;
   // Generate random minutes between minMinutes and TIMER_INTERVAL_MINUTES
   const randomMinutes = minMinutes + Math.floor(Math.random() * (TIMER_INTERVAL_MINUTES - minMinutes));
 
