@@ -53,6 +53,30 @@ export async function sendTimerMessage() {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getAttachmentDescription(attachments: any): string {
+  if (attachments.size === 0) return "";
+
+  const descriptions = [];
+  for (const [, attachment] of attachments) {
+    const { name, contentType, size } = attachment;
+    let type = "file";
+
+    if (contentType?.startsWith("image/")) {
+      type = "image";
+    } else if (contentType?.startsWith("audio/")) {
+      type = "audio";
+    } else if (contentType?.startsWith("video/")) {
+      type = "video";
+    }
+
+    const sizeKB = Math.round(size / 1024);
+    descriptions.push(`${type} "${name}" (${sizeKB}KB)`);
+  }
+
+  return descriptions.length > 0 ? ` [Attachments: ${descriptions.join(", ")}]` : "";
+}
+
 export async function sendMessage(
   discordMessageObject: OmitPartialGroupDMChannel<Message<boolean>>,
   messageType: MessageType,
@@ -60,6 +84,7 @@ export async function sendMessage(
   const {
     author: { id: senderId, displayName },
     content: message,
+    attachments,
   } = discordMessageObject;
 
   // Use server nickname for guild messages, fallback to displayName for DMs
@@ -87,20 +112,21 @@ export async function sendMessage(
     originalMessage = `${originalSenderNickname} (id=${originalMessageObject.author.id}): ${truncateMessage(originalMessageObject.content, 100)}`;
   }
 
+  const attachmentDescription = getAttachmentDescription(attachments);
   let content: string;
 
   switch (messageType) {
     case MessageType.DM:
-      content = `[${senderNameReceipt} sent you a direct message] ${message}`;
+      content = `[${senderNameReceipt} sent you a direct message] ${message}${attachmentDescription}`;
       break;
     case MessageType.MENTION:
-      content = `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}`;
+      content = `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}${attachmentDescription}`;
       break;
     case MessageType.REPLY:
-      content = `[${senderNameReceipt} replied to message: ${originalMessage} in channel ${channelName}] ${message}`;
+      content = `[${senderNameReceipt} replied to message: ${originalMessage} in channel ${channelName}] ${message}${attachmentDescription}`;
       break;
     default:
-      content = `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}`;
+      content = `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}${attachmentDescription}`;
       break;
   }
 

@@ -36,12 +36,38 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (!response) return;
 
-  await message.channel.sendTyping();
+  try {
+    await message.channel.sendTyping();
+  } catch (error) {
+    logger.error("Failed to send typing indicator:", error);
+  }
 
   // Add a small random delay to simulate typing
   const delay = Math.floor(Math.random() * 2000) + 1000; // Between 1 and 3 seconds
   setTimeout(async () => {
-    await message.channel.send(response);
+    try {
+      await message.channel.send(response);
+    } catch (error) {
+      logger.error("Failed to send message to channel:", error);
+
+      // Try to send to general channel if we're in a guild and failed due to permissions
+      if (message.guild) {
+        try {
+          const generalChannel = message.guild.channels.cache.find(
+            (channel) => channel.name === "general" && channel.isTextBased(),
+          );
+
+          if (generalChannel && generalChannel.isTextBased()) {
+            await generalChannel.send(response);
+            logger.info("Successfully sent message to general channel as fallback");
+          } else {
+            logger.error("Could not find general channel for fallback");
+          }
+        } catch (fallbackError) {
+          logger.error("Failed to send message to general channel as fallback:", fallbackError);
+        }
+      }
+    }
   }, delay);
 });
 
