@@ -4,7 +4,7 @@ import logger from "./logger";
 import { MessageType, sendMessage } from "./messages";
 import { chunkString } from "./util/chunkString";
 
-const client = new Client({
+export const client = new Client({
   intents: [
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.Guilds,

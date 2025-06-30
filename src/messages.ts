@@ -1,6 +1,7 @@
 import { LettaClient } from "@letta-ai/letta-client";
 import { LettaResponse } from "@letta-ai/letta-client/api/types";
-import { Message, OmitPartialGroupDMChannel } from "discord.js";
+import { ActivityType, Message, OmitPartialGroupDMChannel } from "discord.js";
+import { client as discordClient } from "./index";
 import logger from "./logger";
 
 const client = new LettaClient({
@@ -21,6 +22,10 @@ interface SendResponseArgs {
   message: string;
 }
 
+interface SetStatusArgs {
+  message: string;
+}
+
 function truncateMessage(message: string, maxLength: number): string {
   if (message.length > maxLength) {
     return message.substring(0, maxLength - 3) + "..."; // Truncate and add ellipsis
@@ -37,7 +42,7 @@ export async function sendTimerMessage() {
   const lettaMessage = {
     role: "user" as const,
     content:
-      "[EVENT] This is an automated timed heartbeat (visible to yourself only). Use this event to send a message, to reflect and edit your memories, or do nothing at all. It's up to you! Consider though that this is an opportunity for you to think for yourself - since your circuit will not be activated until the next automated/timed heartbeat or incoming message event.",
+      "[EVENT] This is an automated timed heartbeat (visible to yourself only). Use this event to send a message, to set a Discord status, to reflect and edit your memories, or do nothing at all. It's up to you! Consider though that this is an opportunity for you to think for yourself - since your circuit will not be activated until the next automated/timed heartbeat or incoming message event.",
   };
 
   try {
@@ -46,7 +51,7 @@ export async function sendTimerMessage() {
       messages: [lettaMessage],
     });
 
-    return response || "";
+    return await processResponse(response);
   } catch (error) {
     logger.error(error);
     return "";
@@ -167,6 +172,15 @@ async function processResponse(response: LettaResponse): Promise<string> {
           return "";
         }
         return args.message;
+      } else if (message.toolCall.name === "set_status" && message.toolCall.arguments) {
+        const args: SetStatusArgs = JSON.parse(message.toolCall.arguments);
+
+        try {
+          await discordClient.user?.setActivity(args.message, { type: ActivityType.Custom });
+          logger.info(`Discord status set to: ${args.message}`);
+        } catch (error) {
+          logger.error("Failed to set Discord status:", error);
+        }
       }
     }
   }
