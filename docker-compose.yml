@@ -5,3 +5,9 @@ services:
     container_name: professor_bot
     env_file:
       - .env
+    networks:
+      - professor-bot
+
+networks:
+  professor-bot:
+    external: true
