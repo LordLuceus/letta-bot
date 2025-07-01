@@ -1,8 +1,14 @@
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { LettaClient } from "@letta-ai/letta-client";
 import { LettaResponse } from "@letta-ai/letta-client/api/types";
 import { ActivityType, Message, OmitPartialGroupDMChannel } from "discord.js";
 import { client as discordClient } from "./index";
 import logger from "./logger";
+
+const elevenlabs = new ElevenLabsClient();
+
+// In-memory cache for transcriptions
+const transcriptionCache = new Map<string, string>();
 
 const client = new LettaClient({
   token: process.env.LETTA_TOKEN || "dummy",
@@ -58,25 +64,73 @@ export async function sendTimerMessage() {
   }
 }
 
+async function transcribeAudio(url: string, contentType: string): Promise<string> {
+  // Check cache first
+  if (transcriptionCache.has(url)) {
+    logger.info(`Using cached transcription for: ${url}`);
+    return transcriptionCache.get(url)!;
+  }
+
+  try {
+    logger.info(`Transcribing audio: ${url} (${contentType})`);
+    const response = await fetch(url);
+    const audioBlob = new Blob([await response.arrayBuffer()], { type: contentType });
+
+    const transcription = await elevenlabs.speechToText.convert({
+      file: audioBlob,
+      modelId: "scribe_v1",
+      tagAudioEvents: true,
+      languageCode: "eng",
+      diarize: true,
+    });
+
+    const result =
+      typeof transcription === "string" ? transcription : transcription.text || "[No transcription available]";
+
+    // Cache the result
+    transcriptionCache.set(url, result);
+    logger.info(`Cached transcription for: ${url}`);
+
+    return result;
+  } catch (error) {
+    logger.error("Failed to transcribe audio:", error);
+    const errorResult = "[Failed to transcribe audio]";
+    // Cache the error result to avoid retrying failed transcriptions
+    transcriptionCache.set(url, errorResult);
+    return errorResult;
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getAttachmentDescription(attachments: any): string {
+async function getAttachmentDescription(attachments: any): Promise<string> {
   if (attachments.size === 0) return "";
 
   const descriptions = [];
   for (const [, attachment] of attachments) {
-    const { name, contentType, size } = attachment;
+    const { name, contentType, size, url } = attachment;
     let type = "file";
+    let transcription = "";
 
     if (contentType?.startsWith("image/")) {
       type = "image";
     } else if (contentType?.startsWith("audio/")) {
       type = "audio";
+      // Transcribe audio files
+      if (process.env.ELEVENLABS_API_KEY) {
+        transcription = await transcribeAudio(url, contentType);
+      }
     } else if (contentType?.startsWith("video/")) {
       type = "video";
     }
 
     const sizeKB = Math.round(size / 1024);
-    descriptions.push(`${type} "${name}" (${sizeKB}KB)`);
+    let description = `${type} "${name}" (${sizeKB}KB)`;
+
+    if (transcription) {
+      description += ` - Transcript: ${transcription}`;
+    }
+
+    descriptions.push(description);
   }
 
   return descriptions.length > 0 ? ` [Attachments: ${descriptions.join(", ")}]` : "";
@@ -117,7 +171,7 @@ export async function sendMessage(
     originalMessage = `${originalSenderNickname} (id=${originalMessageObject.author.id}): ${truncateMessage(originalMessageObject.content, 100)}`;
   }
 
-  const attachmentDescription = getAttachmentDescription(attachments);
+  const attachmentDescription = await getAttachmentDescription(attachments);
   let content: string;
 
   switch (messageType) {

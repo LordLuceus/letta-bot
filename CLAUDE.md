@@ -66,6 +66,9 @@ Required:
 - `LETTA_AGENT_ID` - Specific agent instance ID
 - `LETTA_BASE_URL` - Letta server URL (optional, defaults to cloud)
 
+Optional:
+- `ELEVENLABS_API_KEY` - ElevenLabs API key for audio transcription (if not set, audio files will not be transcribed)
+
 ### Key Implementation Details
 
 - Uses Discord.js partials for DM support
