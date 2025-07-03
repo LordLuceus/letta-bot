@@ -10,6 +10,9 @@ const elevenlabs = new ElevenLabsClient();
 // In-memory cache for transcriptions
 const transcriptionCache = new Map<string, string>();
 
+// Cache for link metadata
+const linkMetadataCache = new Map<string, string>();
+
 const client = new LettaClient({
   token: process.env.LETTA_TOKEN || "dummy",
   baseUrl: process.env.LETTA_BASE_URL,
@@ -101,6 +104,68 @@ async function transcribeAudio(url: string, contentType: string): Promise<string
   }
 }
 
+function extractUrls(text: string): string[] {
+  const urlRegex =
+    /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
+  return text.match(urlRegex) || [];
+}
+
+async function getYouTubeInfo(url: string): Promise<string> {
+  try {
+    const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/);
+    if (!videoId) return "";
+
+    // Use oEmbed API to get video title and description
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const response = await fetch(oembedUrl);
+    const data = (await response.json()) as { title?: string; author_name?: string };
+
+    return `YouTube: "${data.title || "Unknown Title"}" by ${data.author_name || "Unknown Channel"}`;
+  } catch (error) {
+    logger.error("Failed to get YouTube info:", error);
+    return "YouTube video";
+  }
+}
+
+async function getGenericLinkInfo(url: string): Promise<string> {
+  try {
+    const domain = new URL(url).hostname;
+    return `Link: ${domain}`;
+  } catch (error) {
+    logger.error("Failed to get link info:", error);
+    return "Link";
+  }
+}
+
+async function processLinks(text: string): Promise<string> {
+  const urls = extractUrls(text);
+  if (urls.length === 0) return "";
+
+  const linkDescriptions = [];
+
+  for (const url of urls) {
+    // Check cache first
+    if (linkMetadataCache.has(url)) {
+      linkDescriptions.push(linkMetadataCache.get(url)!);
+      continue;
+    }
+
+    let description = "";
+
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      description = await getYouTubeInfo(url);
+    } else {
+      description = await getGenericLinkInfo(url);
+    }
+
+    // Cache the result
+    linkMetadataCache.set(url, description);
+    linkDescriptions.push(description);
+  }
+
+  return linkDescriptions.length > 0 ? ` [Links: ${linkDescriptions.join(", ")}]` : "";
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getAttachmentDescription(attachments: any): Promise<string> {
   if (attachments.size === 0) return "";
@@ -172,20 +237,21 @@ export async function sendMessage(
   }
 
   const attachmentDescription = await getAttachmentDescription(attachments);
+  const linkDescription = await processLinks(message);
   let content: string;
 
   switch (messageType) {
     case MessageType.DM:
-      content = `[${senderNameReceipt} sent you a direct message] ${message}${attachmentDescription}`;
+      content = `[${senderNameReceipt} sent you a direct message] ${message}${linkDescription}${attachmentDescription}`;
       break;
     case MessageType.MENTION:
-      content = `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}${attachmentDescription}`;
+      content = `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
       break;
     case MessageType.REPLY:
-      content = `[${senderNameReceipt} replied to message: ${originalMessage} in channel ${channelName}] ${message}${attachmentDescription}`;
+      content = `[${senderNameReceipt} replied to message: ${originalMessage} in channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
       break;
     default:
-      content = `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}${attachmentDescription}`;
+      content = `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
       break;
   }
 
