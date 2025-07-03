@@ -33,25 +33,17 @@ export async function startRandomEventTimer() {
       // Generate the response via the API
       const message = await sendTimerMessage();
 
-      if (!message) return;
-
-      if (!CHANNEL_ID) {
-        logger.warn("CHANNEL_ID is not set; not sending message to a channel.");
-        return;
-      }
-
-      // Send the message to the specified channel
-      const channel = await client.channels.fetch(CHANNEL_ID);
-      if (!channel || !("send" in channel)) {
-        logger.error(`Channel with ID ${CHANNEL_ID} not found or is not text-based.`);
-        return;
-      }
-
-      try {
-        await channel.send(message);
-        logger.info(`Message sent to channel ${CHANNEL_ID}: ${message}`);
-      } catch (error) {
-        logger.error(`Failed to send message to channel ${CHANNEL_ID}:`, error);
+      if (message !== "" && CHANNEL_ID) {
+        // Send the message to the specified channel
+        const channel = await client.channels.fetch(CHANNEL_ID);
+        if (channel && "send" in channel) {
+          try {
+            await channel.send(message);
+            logger.info(`Message sent to channel ${CHANNEL_ID}: ${message}`);
+          } catch (error) {
+            logger.error(`Failed to send message to channel ${CHANNEL_ID}:`, error);
+          }
+        }
       }
     } else {
       logger.info(`⏰ Random event not triggered (${(1 - FIRING_PROBABILITY) * 100}% chance)`);
