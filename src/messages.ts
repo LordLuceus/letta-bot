@@ -1,7 +1,7 @@
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { LettaClient } from "@letta-ai/letta-client";
 import { LettaResponse } from "@letta-ai/letta-client/api/types";
-import { ActivityType, Embed, Message, OmitPartialGroupDMChannel } from "discord.js";
+import { ActivityType, Message, OmitPartialGroupDMChannel } from "discord.js";
 import { client as discordClient } from "./index";
 import logger from "./logger";
 
@@ -9,6 +9,9 @@ const elevenlabs = new ElevenLabsClient();
 
 // In-memory cache for transcriptions
 const transcriptionCache = new Map<string, string>();
+
+// Cache for link metadata
+const linkMetadataCache = new Map<string, string>();
 
 const client = new LettaClient({
   token: process.env.LETTA_TOKEN || "dummy",
@@ -101,27 +104,66 @@ async function transcribeAudio(url: string, contentType: string): Promise<string
   }
 }
 
-function processEmbeds(embeds: Embed[]): string {
-  if (!embeds || embeds.length === 0) return "";
+function extractUrls(text: string): string[] {
+  const urlRegex =
+    /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
+  return text.match(urlRegex) || [];
+}
 
-  const embedDescriptions = [];
+async function getYouTubeInfo(url: string): Promise<string> {
+  try {
+    const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/);
+    if (!videoId) return "";
 
-  for (const embed of embeds) {
+    // Use oEmbed API to get video title and description
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const response = await fetch(oembedUrl);
+    const data = (await response.json()) as { title?: string; author_name?: string };
+
+    return `YouTube: "${data.title || "Unknown Title"}" by ${data.author_name || "Unknown Channel"}`;
+  } catch (error) {
+    logger.error("Failed to get YouTube info:", error);
+    return "YouTube video";
+  }
+}
+
+async function getGenericLinkInfo(url: string): Promise<string> {
+  try {
+    const domain = new URL(url).hostname;
+    return `Link: ${domain}`;
+  } catch (error) {
+    logger.error("Failed to get link info:", error);
+    return "Link";
+  }
+}
+
+async function processLinks(text: string): Promise<string> {
+  const urls = extractUrls(text);
+  if (urls.length === 0) return "";
+
+  const linkDescriptions = [];
+
+  for (const url of urls) {
+    // Check cache first
+    if (linkMetadataCache.has(url)) {
+      linkDescriptions.push(linkMetadataCache.get(url)!);
+      continue;
+    }
+
     let description = "";
 
-    if (embed.provider?.name === "YouTube") {
-      description = `YouTube: "${embed.title || "Unknown Title"}" by ${embed.author?.name || "Unknown Channel"}`;
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      description = await getYouTubeInfo(url);
     } else {
-      const domain = embed.url ? new URL(embed.url).hostname : "Unknown";
-      description = `Link: ${embed.title || domain}`;
+      description = await getGenericLinkInfo(url);
     }
 
-    if (description) {
-      embedDescriptions.push(description);
-    }
+    // Cache the result
+    linkMetadataCache.set(url, description);
+    linkDescriptions.push(description);
   }
 
-  return embedDescriptions.length > 0 ? ` [Links: ${embedDescriptions.join(", ")}]` : "";
+  return linkDescriptions.length > 0 ? ` [Links: ${linkDescriptions.join(", ")}]` : "";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,7 +209,6 @@ export async function sendMessage(
     author: { id: senderId, displayName },
     content: message,
     attachments,
-    embeds,
   } = discordMessageObject;
 
   // Use server nickname for guild messages, fallback to displayName for DMs
@@ -196,7 +237,7 @@ export async function sendMessage(
   }
 
   const attachmentDescription = await getAttachmentDescription(attachments);
-  const linkDescription = processEmbeds(embeds);
+  const linkDescription = await processLinks(message);
   let content: string;
 
   switch (messageType) {
