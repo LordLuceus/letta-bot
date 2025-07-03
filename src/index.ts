@@ -1,9 +1,11 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import "dotenv/config";
+import { startRandomEventTimer } from "./eventTimer";
 import logger from "./logger";
 import { MessageType, sendMessage } from "./messages";
 import { chunkString } from "./util/chunkString";
-import { startRandomEventTimer } from "./eventTimer";
+
+const CHANNEL_ID = process.env.CHANNEL_ID;
 
 export const client = new Client({
   intents: [
@@ -65,9 +67,7 @@ client.on(Events.MessageCreate, async (message) => {
       // Try to send to general channel if we're in a guild and failed due to permissions
       if (message.guild) {
         try {
-          const generalChannel = message.guild.channels.cache.find(
-            (channel) => channel.name === "general" && channel.isTextBased(),
-          );
+          const generalChannel = message.guild.channels.cache.find((channel) => channel.id === CHANNEL_ID);
 
           if (generalChannel && generalChannel.isTextBased()) {
             for (const chunk of chunks) {

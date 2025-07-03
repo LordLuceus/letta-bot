@@ -1,11 +1,9 @@
-import { client } from ".";
 import logger from "./logger";
 import { sendTimerMessage } from "./messages";
 
 const ENABLE_TIMER = process.env.ENABLE_TIMER === "true";
 const TIMER_INTERVAL_MINUTES = parseInt(process.env.TIMER_INTERVAL_MINUTES || "30", 10);
 const FIRING_PROBABILITY = parseFloat(process.env.FIRING_PROBABILITY || "0.1"); // 10% chance to fire the event
-const CHANNEL_ID = process.env.CHANNEL_ID || "";
 
 export async function startRandomEventTimer() {
   if (!ENABLE_TIMER) {
@@ -31,26 +29,7 @@ export async function startRandomEventTimer() {
       logger.info(`⏰ Random event triggered (${FIRING_PROBABILITY * 100}% chance)`);
 
       // Generate the response via the API
-      const msg = await sendTimerMessage();
-
-      // Pass that response to Discord
-      if (msg !== "") {
-        if (CHANNEL_ID) {
-          try {
-            const channel = await client.channels.fetch(CHANNEL_ID);
-            if (channel && "send" in channel) {
-              await channel.send(msg);
-              logger.info("⏰ Timer message sent to channel");
-            } else {
-              logger.warn("⏰ Channel not found or is not a text channel.");
-            }
-          } catch (error) {
-            logger.error("⏰ Error sending timer message:", error);
-          }
-        } else {
-          logger.info("⏰ No CHANNEL_ID defined; message not sent.");
-        }
-      }
+      await sendTimerMessage();
     } else {
       logger.info(`⏰ Random event not triggered (${(1 - FIRING_PROBABILITY) * 100}% chance)`);
     }
