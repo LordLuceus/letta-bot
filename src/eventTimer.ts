@@ -1,9 +1,11 @@
+import { client } from ".";
 import logger from "./logger";
 import { sendTimerMessage } from "./messages";
 
 const ENABLE_TIMER = process.env.ENABLE_TIMER === "true";
 const TIMER_INTERVAL_MINUTES = parseInt(process.env.TIMER_INTERVAL_MINUTES || "30", 10);
 const FIRING_PROBABILITY = parseFloat(process.env.FIRING_PROBABILITY || "0.1"); // 10% chance to fire the event
+const CHANNEL_ID = process.env.CHANNEL_ID;
 
 export async function startRandomEventTimer() {
   if (!ENABLE_TIMER) {
@@ -29,7 +31,28 @@ export async function startRandomEventTimer() {
       logger.info(`⏰ Random event triggered (${FIRING_PROBABILITY * 100}% chance)`);
 
       // Generate the response via the API
-      await sendTimerMessage();
+      const message = await sendTimerMessage();
+
+      if (!message) return;
+
+      if (!CHANNEL_ID) {
+        logger.warn("CHANNEL_ID is not set; not sending message to a channel.");
+        return;
+      }
+
+      // Send the message to the specified channel
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      if (!channel || !("send" in channel)) {
+        logger.error(`Channel with ID ${CHANNEL_ID} not found or is not text-based.`);
+        return;
+      }
+
+      try {
+        await channel.send(message);
+        logger.info(`Message sent to channel ${CHANNEL_ID}: ${message}`);
+      } catch (error) {
+        logger.error(`Failed to send message to channel ${CHANNEL_ID}:`, error);
+      }
     } else {
       logger.info(`⏰ Random event not triggered (${(1 - FIRING_PROBABILITY) * 100}% chance)`);
     }
