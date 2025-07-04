@@ -103,6 +103,18 @@ async function transcribeAudio(url: string, contentType: string): Promise<string
   }
 }
 
+async function readTextFile(url: string, name: string): Promise<string> {
+  try {
+    logger.info(`Reading text file: ${url} (${name})`);
+    const response = await fetch(url);
+    const text = await response.text();
+    return text;
+  } catch (error) {
+    logger.error("Failed to read text file:", error);
+    return "[Failed to read text file]";
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getAttachmentDescription(attachments: any): Promise<string> {
   if (attachments.size === 0) return "";
@@ -111,7 +123,7 @@ async function getAttachmentDescription(attachments: any): Promise<string> {
   for (const [, attachment] of attachments) {
     const { name, contentType, size, url } = attachment;
     let type = "file";
-    let transcription = "";
+    let content = "";
 
     if (contentType?.startsWith("image/")) {
       type = "image";
@@ -119,17 +131,24 @@ async function getAttachmentDescription(attachments: any): Promise<string> {
       type = "audio";
       // Transcribe audio files
       if (process.env.ELEVENLABS_API_KEY) {
-        transcription = await transcribeAudio(url, contentType);
+        content = await transcribeAudio(url, contentType);
       }
     } else if (contentType?.startsWith("video/")) {
       type = "video";
+    } else if (contentType?.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".md")) {
+      type = "text file";
+      content = await readTextFile(url, name);
     }
 
     const sizeKB = Math.round(size / 1024);
     let description = `${type} "${name}" (${sizeKB}KB)`;
 
-    if (transcription) {
-      description += ` - Transcript: ${transcription}`;
+    if (content) {
+      if (type === "audio") {
+        description += ` - Transcript: ${content}`;
+      } else if (type === "text file") {
+        description += ` - Content: ${content}`;
+      }
     }
 
     descriptions.push(description);
