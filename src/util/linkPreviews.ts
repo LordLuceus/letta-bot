@@ -18,7 +18,9 @@ function extractUrls(text: string): string[] {
 
 async function getYouTubeInfo(url: string): Promise<LinkMetadata> {
   try {
-    const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/);
+    const videoId = url.match(
+      /(?:(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|shorts\/|embed\/|v\/)|youtu\.be\/)([^&\n?#]+)/,
+    );
     if (!videoId) throw new Error("Invalid YouTube URL");
 
     const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
@@ -301,7 +303,7 @@ export async function processLinks(text: string): Promise<string> {
 
     let metadata: LinkMetadata;
 
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    if (url.match(/(?:(?:www\.|m\.)?youtube\.com|youtu\.be)/)) {
       metadata = await getYouTubeInfo(url);
     } else {
       metadata = await getGenericLinkInfo(url);
