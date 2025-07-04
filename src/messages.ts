@@ -5,6 +5,7 @@ import { ActivityType, Message, OmitPartialGroupDMChannel } from "discord.js";
 import { client as discordClient } from "./index";
 import logger from "./logger";
 import { processLinks } from "./util/linkPreviews";
+import { saveStatus } from "./util/statusPersistence";
 
 const elevenlabs = new ElevenLabsClient();
 
@@ -234,6 +235,8 @@ async function processResponse(response: LettaResponse): Promise<string> {
         try {
           await discordClient.user?.setActivity(args.message, { type: ActivityType.Custom });
           logger.info(`Discord status set to: ${args.message}`);
+          // Save status for persistence across restarts
+          await saveStatus(args.message);
         } catch (error) {
           logger.error("Failed to set Discord status:", error);
         }

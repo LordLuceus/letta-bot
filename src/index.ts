@@ -1,9 +1,10 @@
-import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
+import { ActivityType, Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import "dotenv/config";
 import { startRandomEventTimer } from "./eventTimer";
 import logger from "./logger";
 import { MessageType, sendMessage } from "./messages";
 import { chunkString } from "./util/chunkString";
+import { loadStatus } from "./util/statusPersistence";
 
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
@@ -17,8 +18,20 @@ export const client = new Client({
   partials: [Partials.Channel, Partials.Message],
 });
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
   logger.info("Discord bot is ready!");
+
+  // Restore saved status if exists
+  const savedStatus = await loadStatus();
+  if (savedStatus) {
+    try {
+      await client.user?.setActivity(savedStatus, { type: ActivityType.Custom });
+      logger.info(`Restored Discord status: ${savedStatus}`);
+    } catch (error) {
+      logger.error("Failed to restore Discord status:", error);
+    }
+  }
+
   startRandomEventTimer();
 });
 

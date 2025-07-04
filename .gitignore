@@ -12,7 +12,6 @@ vite.config.ts.timestamp-*
 .wrangler
 /data
 redis.conf
-scripts
 dist
 logs
 scripts
