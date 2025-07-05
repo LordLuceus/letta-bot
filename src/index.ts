@@ -7,6 +7,7 @@ import { chunkString } from "./util/chunkString";
 import { loadStatus } from "./util/statusPersistence";
 
 const CHANNEL_ID = process.env.CHANNEL_ID;
+const IGNORE_CHANNEL_ID = process.env.IGNORE_CHANNEL_ID;
 
 export const client = new Client({
   intents: [
@@ -37,6 +38,11 @@ client.once(Events.ClientReady, async () => {
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.id === client.user?.id) return; // Ignore messages from the bot itself
+
+  if (message.channel.id === IGNORE_CHANNEL_ID) {
+    logger.info(`Ignoring message in channel ${message.channel.id}`);
+    return; // Ignore messages in the specified ignore channel
+  }
 
   let messageType: MessageType;
 
