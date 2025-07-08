@@ -1,6 +1,6 @@
 import { ActivityType, Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import "dotenv/config";
-import { startRandomEventTimer } from "./eventTimer";
+import { fireManualHeartbeat, startRandomEventTimer } from "./eventTimer";
 import logger from "./logger";
 import { MessageType, sendMessage } from "./messages";
 import { chunkString } from "./util/chunkString";
@@ -42,6 +42,25 @@ client.on(Events.MessageCreate, async (message) => {
   if (message.channel.id === IGNORE_CHANNEL_ID) {
     logger.info(`Ignoring message in channel ${message.channel.id}`);
     return; // Ignore messages in the specified ignore channel
+  }
+
+  // Check for manual heartbeat command
+  if (message.content.trim().toLowerCase() === "!heartbeat") {
+    logger.info(`Manual heartbeat command triggered by ${message.author.displayName} (${message.author.id})`);
+
+    try {
+      await message.channel.sendTyping();
+      await fireManualHeartbeat();
+      await message.react("❤️"); // React with heart to acknowledge command
+    } catch (error) {
+      logger.error("Failed to execute manual heartbeat:", error);
+      try {
+        await message.react("❌"); // React with X to indicate failure
+      } catch (reactionError) {
+        logger.error("Failed to react to manual heartbeat command:", reactionError);
+      }
+    }
+    return;
   }
 
   let messageType: MessageType;

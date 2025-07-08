@@ -40,6 +40,13 @@ This is a Discord bot that integrates with Letta AI to create a stateful AI assi
 
 **Utilities (`src/util/`):**
 - `chunkString.ts` - String chunking utility with delimiter-aware splitting
+- `linkPreviews.ts` - URL metadata extraction with special handling for YouTube, GitHub, and Twitter
+- `statusPersistence.ts` - Discord bot status persistence across restarts using JSON file storage
+
+**Event Timer (`src/eventTimer.ts`):**
+- Configurable random timer system for periodic agent heartbeat messages
+- Probabilistic event firing with configurable intervals and firing rates
+- Sends timer messages to specified Discord channel when triggered
 
 ### Letta Integration
 
@@ -68,6 +75,11 @@ Required:
 
 Optional:
 - `ELEVENLABS_API_KEY` - ElevenLabs API key for audio transcription (if not set, audio files will not be transcribed)
+- `CHANNEL_ID` - Default channel ID for fallback message delivery and timer messages
+- `IGNORE_CHANNEL_ID` - Channel ID to ignore messages from
+- `ENABLE_TIMER` - Set to "true" to enable periodic agent heartbeat messages
+- `TIMER_INTERVAL_MINUTES` - Maximum interval for timer events (default: 30)
+- `FIRING_PROBABILITY` - Probability of timer events firing (default: 0.1 = 10%)
 
 ### Key Implementation Details
 
@@ -76,3 +88,33 @@ Optional:
 - Message truncation for reply contexts (100 char limit)
 - Structured logging with request/response details
 - Pre-commit hooks with Husky for linting and formatting
+- In-memory transcription cache to avoid re-processing audio files
+- Link preview extraction with TTL-based caching (24 hours)
+- Discord status persistence using JSON file storage in `data/` directory
+- Chunked message delivery with rate limiting protection
+- Fallback message delivery to general channel on permission errors
+
+### Agent Tools
+
+The bot supports two custom tools that the Letta agent can use:
+
+1. **`send_response`** - Sends a message back to Discord
+   - `is_responding: boolean` - Whether the agent is actively responding
+   - `message: string` - The message content to send
+
+2. **`set_status`** - Sets the Discord bot's status
+   - `message: string` - The status message to display
+
+### File Structure
+
+```
+src/
+├── index.ts              # Main Discord client and event handling
+├── messages.ts           # Core message processing and Letta integration
+├── eventTimer.ts         # Random timer system for agent heartbeats
+├── logger.ts             # Winston logging configuration
+└── util/
+    ├── chunkString.ts    # Message chunking utility
+    ├── linkPreviews.ts   # URL metadata extraction
+    └── statusPersistence.ts # Discord status persistence
+```

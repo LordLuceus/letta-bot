@@ -55,3 +55,25 @@ export async function startRandomEventTimer() {
     }, 1000); // 1 second delay before scheduling next timer
   }, delay);
 }
+
+export async function fireManualHeartbeat() {
+  logger.info("🔥 Manual heartbeat triggered with 100% firing probability");
+
+  // Generate the response via the API
+  const message = await sendTimerMessage();
+
+  if (message !== "" && CHANNEL_ID) {
+    // Send the message to the specified channel
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (channel && "send" in channel) {
+      try {
+        await channel.send(message);
+        logger.info(`Manual heartbeat message sent to channel ${CHANNEL_ID}: ${message}`);
+      } catch (error) {
+        logger.error(`Failed to send manual heartbeat message to channel ${CHANNEL_ID}:`, error);
+      }
+    }
+  }
+
+  return message;
+}

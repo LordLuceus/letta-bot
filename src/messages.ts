@@ -48,7 +48,7 @@ export async function sendTimerMessage() {
   }
 
   const lettaMessage = {
-    role: "user" as const,
+    role: "system" as const,
     content:
       "[EVENT] This is an automated timed heartbeat (visible to yourself only). Use this event to send a message, to set a Discord status, to reflect and edit your memories, or do nothing at all. It's up to you! Consider though that this is an opportunity for you to think for yourself - since your circuit will not be activated until the next automated/timed heartbeat or incoming message event.",
   };
