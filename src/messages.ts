@@ -25,11 +25,6 @@ export enum MessageType {
   GENERIC = "GENERIC",
 }
 
-interface SendResponseArgs {
-  is_responding: boolean;
-  message: string;
-}
-
 interface SetStatusArgs {
   message: string;
 }
@@ -245,14 +240,7 @@ async function processResponse(response: LettaResponse): Promise<string> {
 
   for (const message of response.messages) {
     if (message.messageType === "tool_call_message") {
-      if (message.toolCall.name === "send_response" && message.toolCall.arguments) {
-        const args: SendResponseArgs = JSON.parse(message.toolCall.arguments);
-
-        if (!args.is_responding) {
-          return "";
-        }
-        return args.message;
-      } else if (message.toolCall.name === "set_status" && message.toolCall.arguments) {
+      if (message.toolCall.name === "set_status" && message.toolCall.arguments) {
         const args: SetStatusArgs = JSON.parse(message.toolCall.arguments);
 
         try {
@@ -263,10 +251,16 @@ async function processResponse(response: LettaResponse): Promise<string> {
         } catch (error) {
           logger.error("Failed to set Discord status:", error);
         }
-        return "";
+      }
+    } else if (message.messageType === "assistant_message") {
+      if (typeof message.content === "string" && message.content.trim()) {
+        const content = message.content.trim();
+        if (content) {
+          logger.info(`Letta response: ${content}`);
+          return content;
+        }
       }
     }
   }
-  logger.error("No message found in response");
   return "";
 }
