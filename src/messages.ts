@@ -218,9 +218,13 @@ export async function sendMessage(
 
   try {
     logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
-    const response = await client.agents.messages.create(AGENT_ID, {
-      messages: [lettaMessage],
-    });
+    const response = await client.agents.messages.create(
+      AGENT_ID,
+      {
+        messages: [lettaMessage],
+      },
+      { timeoutInSeconds: 120 },
+    );
 
     if (response) {
       return await processResponse(response);
