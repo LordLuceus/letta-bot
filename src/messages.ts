@@ -25,6 +25,204 @@ export enum MessageType {
   GENERIC = "GENERIC",
 }
 
+interface QueuedMessage {
+  discordMessage: OmitPartialGroupDMChannel<Message<boolean>> | null;
+  messageType: MessageType;
+  timestamp: number;
+  resolve: (response: string) => void;
+  reject: (error: Error) => void;
+}
+
+class MessageQueue {
+  private queue: QueuedMessage[] = [];
+  private processing = false;
+
+  async enqueue(
+    discordMessage: OmitPartialGroupDMChannel<Message<boolean>>,
+    messageType: MessageType,
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.queue.push({
+        discordMessage,
+        messageType,
+        timestamp: Date.now(),
+        resolve,
+        reject,
+      });
+
+      logger.info(`Message queued. Queue size: ${this.queue.length}`);
+      this.processNext();
+    });
+  }
+
+  private async processNext(): Promise<void> {
+    if (this.processing || this.queue.length === 0) {
+      return;
+    }
+
+    this.processing = true;
+    const queuedMessage = this.queue.shift()!;
+
+    try {
+      logger.info(`Processing message from queue. Remaining: ${this.queue.length}`);
+      let response: string;
+
+      if (queuedMessage.discordMessage === null) {
+        // This is a timer message
+        response = await this.processTimerMessage();
+      } else {
+        // This is a regular Discord message
+        response = await this.processMessage(queuedMessage.discordMessage, queuedMessage.messageType);
+      }
+
+      queuedMessage.resolve(response);
+    } catch (error) {
+      logger.error("Error processing queued message:", error);
+      queuedMessage.reject(error as Error);
+    } finally {
+      this.processing = false;
+      // Process next message if any
+      if (this.queue.length > 0) {
+        setImmediate(() => this.processNext());
+      }
+    }
+  }
+
+  private async processMessage(
+    discordMessageObject: OmitPartialGroupDMChannel<Message<boolean>>,
+    messageType: MessageType,
+  ): Promise<string> {
+    const {
+      author: { id: senderId, displayName },
+      content: message,
+      attachments,
+    } = discordMessageObject;
+
+    const nickname = discordMessageObject.member?.nickname || displayName;
+
+    if (!AGENT_ID) {
+      logger.error("Error: LETTA_AGENT_ID is not set");
+      return "";
+    }
+
+    const senderNameReceipt = `${nickname} (id=${senderId})`;
+    const channelName = "name" in discordMessageObject.channel ? discordMessageObject.channel.name || "" : "";
+
+    let originalMessage = "";
+
+    if (messageType === MessageType.REPLY && discordMessageObject.reference?.messageId) {
+      const originalMessageObject = await discordMessageObject.channel.messages.fetch(
+        discordMessageObject.reference.messageId,
+      );
+      const originalSenderNickname = originalMessageObject.member?.nickname || originalMessageObject.author.displayName;
+      originalMessage = `${originalSenderNickname} (id=${originalMessageObject.author.id}): ${truncateMessage(originalMessageObject.content, 100)}`;
+    }
+
+    const attachmentDescription = await getAttachmentDescription(attachments);
+    const linkDescription = await processLinks(message);
+    let content: string;
+
+    switch (messageType) {
+      case MessageType.DM:
+        content = `[${senderNameReceipt} sent you a direct message] ${message}${linkDescription}${attachmentDescription}`;
+        break;
+      case MessageType.MENTION:
+        content = `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
+        break;
+      case MessageType.REPLY:
+        content = `[${senderNameReceipt} replied to message: ${originalMessage} in channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
+        break;
+      default:
+        content = `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
+        break;
+    }
+
+    const lettaMessage = {
+      role: "user" as const,
+      content,
+    };
+
+    try {
+      logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
+      const response = await client.agents.messages.create(
+        AGENT_ID,
+        {
+          messages: [lettaMessage],
+        },
+        { timeoutInSeconds: 300 },
+      );
+
+      if (response) {
+        return await processResponse(response);
+      }
+
+      return "";
+    } catch (error) {
+      logger.error(error);
+      return "";
+    }
+  }
+
+  async enqueueTimerMessage(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const timerMessage: QueuedMessage = {
+        discordMessage: null,
+        messageType: MessageType.GENERIC,
+        timestamp: Date.now(),
+        resolve,
+        reject,
+      };
+
+      this.queue.push(timerMessage);
+      logger.info(`Timer message queued. Queue size: ${this.queue.length}`);
+      this.processNext();
+    });
+  }
+
+  private async processTimerMessage(): Promise<string> {
+    if (!AGENT_ID) {
+      logger.error("Error: LETTA_AGENT_ID is not set");
+      return "";
+    }
+
+    const lettaMessage = {
+      role: "user" as const,
+      content:
+        "[EVENT] This is an automated timed heartbeat (visible to yourself only). Use this event to send a message, to set a Discord status, to reflect and edit your memories, or do nothing at all. It's up to you! Consider though that this is an opportunity for you to think for yourself - since your circuit will not be activated until the next automated/timed heartbeat or incoming message event.",
+    };
+
+    try {
+      logger.info(`🛜 Sending timer message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
+      const response = await client.agents.messages.create(
+        AGENT_ID,
+        {
+          messages: [lettaMessage],
+        },
+        { timeoutInSeconds: 300 },
+      );
+
+      if (response) {
+        return await processResponse(response);
+      }
+
+      return "";
+    } catch (error) {
+      logger.error(error);
+      return "";
+    }
+  }
+
+  getQueueSize(): number {
+    return this.queue.length;
+  }
+
+  isProcessing(): boolean {
+    return this.processing;
+  }
+}
+
+const messageQueue = new MessageQueue();
+
 interface SetStatusArgs {
   message: string;
 }
@@ -36,33 +234,15 @@ function truncateMessage(message: string, maxLength: number): string {
   return message;
 }
 
-export async function sendTimerMessage() {
-  if (!AGENT_ID) {
-    logger.error("Error: LETTA_AGENT_ID is not set");
-    return "";
-  }
+export async function sendTimerMessage(): Promise<string> {
+  return messageQueue.enqueueTimerMessage();
+}
 
-  const lettaMessage = {
-    role: "user" as const,
-    content:
-      "[EVENT] This is an automated timed heartbeat (visible to yourself only). Use this event to send a message, to set a Discord status, to reflect and edit your memories, or do nothing at all. It's up to you! Consider though that this is an opportunity for you to think for yourself - since your circuit will not be activated until the next automated/timed heartbeat or incoming message event.",
+export function getQueueStatus(): { size: number; isProcessing: boolean } {
+  return {
+    size: messageQueue.getQueueSize(),
+    isProcessing: messageQueue.isProcessing(),
   };
-
-  try {
-    logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
-    const response = await client.agents.messages.create(
-      AGENT_ID,
-      {
-        messages: [lettaMessage],
-      },
-      { timeoutInSeconds: 300 },
-    );
-
-    return await processResponse(response);
-  } catch (error) {
-    logger.error(error);
-    return "";
-  }
 }
 
 async function transcribeAudio(url: string, contentType: string): Promise<string> {
@@ -159,81 +339,8 @@ async function getAttachmentDescription(attachments: any): Promise<string> {
 export async function sendMessage(
   discordMessageObject: OmitPartialGroupDMChannel<Message<boolean>>,
   messageType: MessageType,
-) {
-  const {
-    author: { id: senderId, displayName },
-    content: message,
-    attachments,
-  } = discordMessageObject;
-
-  // Use server nickname for guild messages, fallback to displayName for DMs
-  const nickname = discordMessageObject.member?.nickname || displayName;
-
-  if (!AGENT_ID) {
-    logger.error("Error: LETTA_AGENT_ID is not set");
-    return "";
-  }
-
-  // We include a sender receipt so that agent knows which user sent the message
-  // We also include the Discord ID so that the agent can tag the user with @
-  const senderNameReceipt = `${nickname} (id=${senderId})`;
-
-  const channelName = "name" in discordMessageObject.channel ? discordMessageObject.channel.name || "" : "";
-
-  let originalMessage = "";
-
-  if (messageType === MessageType.REPLY && discordMessageObject.reference?.messageId) {
-    // If the message is a reply, we try to fetch the original message
-    const originalMessageObject = await discordMessageObject.channel.messages.fetch(
-      discordMessageObject.reference.messageId,
-    );
-    const originalSenderNickname = originalMessageObject.member?.nickname || originalMessageObject.author.displayName;
-    originalMessage = `${originalSenderNickname} (id=${originalMessageObject.author.id}): ${truncateMessage(originalMessageObject.content, 100)}`;
-  }
-
-  const attachmentDescription = await getAttachmentDescription(attachments);
-  const linkDescription = await processLinks(message);
-  let content: string;
-
-  switch (messageType) {
-    case MessageType.DM:
-      content = `[${senderNameReceipt} sent you a direct message] ${message}${linkDescription}${attachmentDescription}`;
-      break;
-    case MessageType.MENTION:
-      content = `[${senderNameReceipt} sent a message mentioning you in channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
-      break;
-    case MessageType.REPLY:
-      content = `[${senderNameReceipt} replied to message: ${originalMessage} in channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
-      break;
-    default:
-      content = `[${senderNameReceipt} sent a message to channel ${channelName}] ${message}${linkDescription}${attachmentDescription}`;
-      break;
-  }
-
-  const lettaMessage = {
-    role: "user" as const,
-    content,
-  };
-
-  try {
-    logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
-    const response = await client.agents.messages.create(
-      AGENT_ID,
-      {
-        messages: [lettaMessage],
-      },
-      { timeoutInSeconds: 300 },
-    );
-
-    if (response) {
-      return await processResponse(response);
-    }
-
-    return "";
-  } catch (error) {
-    logger.error(error);
-    return "";
-  }
+): Promise<string> {
+  return messageQueue.enqueue(discordMessageObject, messageType);
 }
 
 async function processResponse(response: LettaResponse): Promise<string> {

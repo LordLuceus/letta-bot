@@ -27,7 +27,9 @@ This is a Discord bot that integrates with Letta AI to create a stateful AI assi
 - Error handling with fallback to general channel
 
 **Message Processing (`src/messages.ts`):**  
-- `sendMessage()` - Main function that processes Discord messages and sends to Letta
+- **Message Queue System**: FIFO queue that processes one Letta request at a time to prevent race conditions
+- `sendMessage()` - Main function that enqueues Discord messages for processing
+- `MessageQueue` class - Handles sequential processing of both Discord messages and timer messages
 - Message categorization and context formatting for the AI agent
 - Reply handling that fetches original message content
 - **Media Handling**: Detects attachments (images, audio, video) and includes descriptions
@@ -48,6 +50,16 @@ This is a Discord bot that integrates with Letta AI to create a stateful AI assi
 - Probabilistic event firing with configurable intervals and firing rates
 - Sends timer messages to specified Discord channel when triggered
 
+### Message Queue Architecture
+
+The bot implements a FIFO message queue system to prevent race conditions:
+- **Problem**: Multiple rapid Discord messages could trigger concurrent Letta requests, causing the AI to see messages without proper context
+- **Solution**: `MessageQueue` class processes one message at a time in order
+- **Implementation**: Both Discord messages and timer messages use the same queue
+- **Key Methods**: `enqueue()`, `enqueueTimerMessage()`, `processNext()`, `getQueueStatus()`
+- **Error Handling**: Failed messages don't block the queue; processing continues with the next message
+- **Monitoring**: Queue size and processing status are logged for debugging
+
 ### Letta Integration
 
 The bot uses Letta's stateful agent architecture:
@@ -59,11 +71,13 @@ The bot uses Letta's stateful agent architecture:
 ### Message Flow
 
 1. Discord message received → Message type detection (DM/mention/reply/generic)
-2. Context formatting with sender info, channel names, reply context
-3. **Media processing** - Attachment detection and description generation
-4. Send to Letta agent via `client.agents.messages.create()`
-5. Process Letta response for `send_response` tool calls  
-6. Send response back to Discord with typing simulation
+2. Message enqueued in `MessageQueue` for sequential processing
+3. Queue processes one message at a time to prevent race conditions
+4. Context formatting with sender info, channel names, reply context
+5. **Media processing** - Attachment detection and description generation
+6. Send to Letta agent via `client.agents.messages.create()`
+7. Process Letta response for `send_response` tool calls  
+8. Send response back to Discord with typing simulation
 
 ### Environment Variables
 
@@ -83,16 +97,18 @@ Optional:
 
 ### Key Implementation Details
 
+- **Message Queue System**: Prevents race conditions by processing one Letta request at a time
 - Uses Discord.js partials for DM support
 - Implements attachment description for media files (`getAttachmentDescription()`)
 - Message truncation for reply contexts (100 char limit)
-- Structured logging with request/response details
+- Structured logging with request/response details and queue status
 - Pre-commit hooks with Husky for linting and formatting
 - In-memory transcription cache to avoid re-processing audio files
 - Link preview extraction with TTL-based caching (24 hours)
 - Discord status persistence using JSON file storage in `data/` directory
 - Chunked message delivery with rate limiting protection
 - Fallback message delivery to general channel on permission errors
+- Queue monitoring available via `getQueueStatus()` function
 
 ### Agent Tools
 
