@@ -6,6 +6,7 @@ import { client as discordClient } from "./index";
 import logger from "./logger";
 import { processLinks } from "./util/linkPreviews";
 import { saveStatus } from "./util/statusPersistence";
+import { trimChar } from "./util/trimChar";
 
 const elevenlabs = new ElevenLabsClient();
 
@@ -365,7 +366,7 @@ async function processResponse(response: LettaResponse): Promise<string> {
       }
     } else if (message.messageType === "assistant_message") {
       if (typeof message.content === "string" && message.content.trim()) {
-        const content = message.content.trim();
+        const content = trimChar(message.content.trim(), '"');
         if (content) {
           logger.info(`Letta response: ${content}`);
           return content;
