@@ -43,16 +43,20 @@ export async function sendTimerMessage() {
   }
 
   const lettaMessage = {
-    role: "system" as const,
+    role: "user" as const,
     content:
       "[EVENT] This is an automated timed heartbeat (visible to yourself only). Use this event to send a message, to set a Discord status, to reflect and edit your memories, or do nothing at all. It's up to you! Consider though that this is an opportunity for you to think for yourself - since your circuit will not be activated until the next automated/timed heartbeat or incoming message event.",
   };
 
   try {
     logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
-    const response = await client.agents.messages.create(AGENT_ID, {
-      messages: [lettaMessage],
-    });
+    const response = await client.agents.messages.create(
+      AGENT_ID,
+      {
+        messages: [lettaMessage],
+      },
+      { timeoutInSeconds: 300 },
+    );
 
     return await processResponse(response);
   } catch (error) {
@@ -218,7 +222,7 @@ export async function sendMessage(
       {
         messages: [lettaMessage],
       },
-      { timeoutInSeconds: 120 },
+      { timeoutInSeconds: 300 },
     );
 
     if (response) {
