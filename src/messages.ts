@@ -1,6 +1,7 @@
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { LettaClient } from "@letta-ai/letta-client";
-import { LettaResponse } from "@letta-ai/letta-client/api/types";
+import { LettaStreamingResponse } from "@letta-ai/letta-client/api/resources/agents/resources/messages/types";
+import { Stream } from "@letta-ai/letta-client/core";
 import { ActivityType, Message, OmitPartialGroupDMChannel } from "discord.js";
 import { client as discordClient } from "./index";
 import logger from "./logger";
@@ -145,7 +146,7 @@ class MessageQueue {
 
     try {
       logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
-      const response = await client.agents.messages.create(
+      const response = await client.agents.messages.createStream(
         AGENT_ID,
         {
           messages: [lettaMessage],
@@ -154,7 +155,7 @@ class MessageQueue {
       );
 
       if (response) {
-        return await processResponse(response);
+        return await processStream(response);
       }
 
       return "";
@@ -194,7 +195,7 @@ class MessageQueue {
 
     try {
       logger.info(`🛜 Sending timer message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
-      const response = await client.agents.messages.create(
+      const response = await client.agents.messages.createStream(
         AGENT_ID,
         {
           messages: [lettaMessage],
@@ -203,7 +204,7 @@ class MessageQueue {
       );
 
       if (response) {
-        return await processResponse(response);
+        return await processStream(response);
       }
 
       return "";
@@ -337,42 +338,72 @@ async function getAttachmentDescription(attachments: any): Promise<string> {
   return descriptions.length > 0 ? ` [Attachments: ${descriptions.join(", ")}]` : "";
 }
 
+const processStream = async (response: Stream<LettaStreamingResponse>): Promise<string> => {
+  let agentMessageResponse = "";
+  try {
+    for await (const chunk of response) {
+      // Handle different message types that might be returned
+      if ("messageType" in chunk) {
+        switch (chunk.messageType) {
+          case "assistant_message":
+            if ("content" in chunk && typeof chunk.content === "string") {
+              agentMessageResponse += chunk.content;
+            }
+            break;
+          case "stop_reason":
+            logger.info("🛑 Stream stopped:", chunk);
+            break;
+          case "reasoning_message":
+            logger.info("🧠 Reasoning:", chunk);
+            break;
+          case "tool_call_message":
+            logger.info("🔧 Tool call:", chunk);
+            // Handle tool calls for status setting
+            if ("toolCall" in chunk && chunk.toolCall.name === "set_status" && chunk.toolCall.arguments) {
+              const args: SetStatusArgs = JSON.parse(chunk.toolCall.arguments);
+              try {
+                await discordClient.user?.setActivity(args.message, { type: ActivityType.Custom });
+                logger.info(`Discord status set to: ${args.message}`);
+                // Save status for persistence across restarts
+                await saveStatus(args.message);
+              } catch (error) {
+                logger.error("Failed to set Discord status:", error);
+              }
+            }
+            break;
+          case "tool_return_message":
+            logger.info("🔧 Tool return:", chunk);
+            break;
+          case "usage_statistics":
+            logger.info("📊 Usage stats:", chunk);
+            break;
+          default:
+            logger.info("📨 Unknown message type:", chunk.messageType, chunk);
+        }
+      } else {
+        logger.info("❓ Chunk without messageType:", chunk);
+      }
+    }
+  } catch (error) {
+    logger.error("❌ Error processing stream:", error);
+    throw error;
+  }
+
+  // Clean up the response content and return it
+  if (agentMessageResponse.trim()) {
+    const content = trimChar(agentMessageResponse.trim(), '"');
+    if (content) {
+      logger.info(`Letta response: ${content}`);
+      return content;
+    }
+  }
+
+  return "";
+};
+
 export async function sendMessage(
   discordMessageObject: OmitPartialGroupDMChannel<Message<boolean>>,
   messageType: MessageType,
 ): Promise<string> {
   return messageQueue.enqueue(discordMessageObject, messageType);
-}
-
-async function processResponse(response: LettaResponse): Promise<string> {
-  if (!response || !response.messages || response.messages.length === 0) {
-    logger.error("No messages in response");
-    return "";
-  }
-
-  for (const message of response.messages) {
-    if (message.messageType === "tool_call_message") {
-      if (message.toolCall.name === "set_status" && message.toolCall.arguments) {
-        const args: SetStatusArgs = JSON.parse(message.toolCall.arguments);
-
-        try {
-          await discordClient.user?.setActivity(args.message, { type: ActivityType.Custom });
-          logger.info(`Discord status set to: ${args.message}`);
-          // Save status for persistence across restarts
-          await saveStatus(args.message);
-        } catch (error) {
-          logger.error("Failed to set Discord status:", error);
-        }
-      }
-    } else if (message.messageType === "assistant_message") {
-      if (typeof message.content === "string" && message.content.trim()) {
-        const content = trimChar(message.content.trim(), '"');
-        if (content) {
-          logger.info(`Letta response: ${content}`);
-          return content;
-        }
-      }
-    }
-  }
-  return "";
 }
