@@ -4,6 +4,7 @@ import { sendTimerMessage } from "./messages";
 
 const ENABLE_TIMER = process.env.ENABLE_TIMER === "true";
 const TIMER_INTERVAL_MINUTES = parseInt(process.env.TIMER_INTERVAL_MINUTES || "30", 10);
+const MIN_INTERVAL_MINUTES = parseInt(process.env.MIN_INTERVAL_MINUTES || "1", 10);
 const FIRING_PROBABILITY = parseFloat(process.env.FIRING_PROBABILITY || "0.1"); // 10% chance to fire the event
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
@@ -13,10 +14,9 @@ export async function startRandomEventTimer() {
     return;
   }
 
-  // Set a minimum delay to prevent too-frequent firing (at least 1 minute)
-  const minMinutes = 1;
-  // Generate random minutes between minMinutes and TIMER_INTERVAL_MINUTES
-  const randomMinutes = minMinutes + Math.floor(Math.random() * (TIMER_INTERVAL_MINUTES - minMinutes));
+  // Generate random minutes between MIN_INTERVAL_MINUTES and TIMER_INTERVAL_MINUTES
+  const randomMinutes =
+    MIN_INTERVAL_MINUTES + Math.floor(Math.random() * (TIMER_INTERVAL_MINUTES - MIN_INTERVAL_MINUTES));
 
   // Log the next timer interval for debugging
   logger.info(`⏰ Timer scheduled to fire in ${randomMinutes} minutes`);
