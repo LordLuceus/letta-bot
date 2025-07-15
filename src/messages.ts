@@ -7,7 +7,6 @@ import { client as discordClient } from "./index";
 import logger from "./logger";
 import { processLinks } from "./util/linkPreviews";
 import { saveStatus } from "./util/statusPersistence";
-import { trimChar } from "./util/trimChar";
 
 const elevenlabs = new ElevenLabsClient();
 
@@ -389,13 +388,10 @@ const processStream = async (response: Stream<LettaStreamingResponse>): Promise<
     throw error;
   }
 
-  // Clean up the response content and return it
   if (agentMessageResponse.trim()) {
-    const content = trimChar(agentMessageResponse.trim(), '"');
-    if (content) {
-      logger.info(`Letta response: ${content}`);
-      return content;
-    }
+    const content = agentMessageResponse.trim();
+    logger.info(`Letta response: ${content}`);
+    return content;
   }
 
   return "";
