@@ -1,6 +1,7 @@
 import { client } from ".";
 import logger from "./logger";
 import { sendTimerMessage } from "./messages";
+import { chunkString } from "./util/chunkString";
 
 const ENABLE_TIMER = process.env.ENABLE_TIMER === "true";
 const TIMER_INTERVAL_MINUTES = parseInt(process.env.TIMER_INTERVAL_MINUTES || "30", 10);
@@ -38,7 +39,16 @@ export async function startRandomEventTimer() {
         const channel = await client.channels.fetch(CHANNEL_ID);
         if (channel && "send" in channel) {
           try {
-            await channel.send(message);
+            const chunks = chunkString(message, ["\n\n", "\n", ". ", " "], 2000);
+
+            for (const chunk of chunks) {
+              await channel.send(chunk);
+              // Small delay between chunks to avoid rate limiting
+              if (chunks.length > 1) {
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              }
+            }
+
             logger.info(`Message sent to channel ${CHANNEL_ID}: ${message}`);
           } catch (error) {
             logger.error(`Failed to send message to channel ${CHANNEL_ID}:`, error);
@@ -67,7 +77,16 @@ export async function fireManualHeartbeat() {
     const channel = await client.channels.fetch(CHANNEL_ID);
     if (channel && "send" in channel) {
       try {
-        await channel.send(message);
+        const chunks = chunkString(message, ["\n\n", "\n", ". ", " "], 2000);
+
+        for (const chunk of chunks) {
+          await channel.send(chunk);
+          // Small delay between chunks to avoid rate limiting
+          if (chunks.length > 1) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+        }
+
         logger.info(`Manual heartbeat message sent to channel ${CHANNEL_ID}: ${message}`);
       } catch (error) {
         logger.error(`Failed to send manual heartbeat message to channel ${CHANNEL_ID}:`, error);
