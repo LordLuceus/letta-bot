@@ -228,6 +228,11 @@ interface SetStatusArgs {
   message: string;
 }
 
+interface SendResponseArgs {
+  is_responding: boolean;
+  message: string;
+}
+
 function truncateMessage(message: string, maxLength: number): string {
   if (message.length > maxLength) {
     return message.substring(0, maxLength - 3) + "..."; // Truncate and add ellipsis
@@ -344,11 +349,6 @@ const processStream = async (response: Stream<LettaStreamingResponse>): Promise<
       // Handle different message types that might be returned
       if ("messageType" in chunk) {
         switch (chunk.messageType) {
-          case "assistant_message":
-            if ("content" in chunk && typeof chunk.content === "string") {
-              agentMessageResponse += chunk.content;
-            }
-            break;
           case "stop_reason":
             logger.info("🛑 Stream stopped:", chunk);
             break;
@@ -367,6 +367,13 @@ const processStream = async (response: Stream<LettaStreamingResponse>): Promise<
                 await saveStatus(args.message);
               } catch (error) {
                 logger.error("Failed to set Discord status:", error);
+              }
+            } else if ("toolCall" in chunk && chunk.toolCall.name === "send_response" && chunk.toolCall.arguments) {
+              const args: SendResponseArgs = JSON.parse(chunk.toolCall.arguments);
+              if (args.is_responding) {
+                agentMessageResponse += args.message;
+              } else {
+                logger.info("Agent is not responding, skipping message:", args.message);
               }
             }
             break;
