@@ -149,6 +149,9 @@ class MessageQueue {
         AGENT_ID,
         {
           messages: [lettaMessage],
+          assistantMessageToolName: "send_response",
+          assistantMessageToolKwarg: "message",
+          useAssistantMessage: true,
         },
         { timeoutInSeconds: 300 },
       );
@@ -198,6 +201,9 @@ class MessageQueue {
         AGENT_ID,
         {
           messages: [lettaMessage],
+          assistantMessageToolName: "send_response",
+          assistantMessageToolKwarg: "message",
+          useAssistantMessage: true,
         },
         { timeoutInSeconds: 300 },
       );
