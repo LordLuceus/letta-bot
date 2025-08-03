@@ -90,11 +90,6 @@ class MessageQueue {
 
       // If we're currently processing OR already batching, add to batch
       if (this.processing || this.batchTimer) {
-        if (this.processing) {
-          logger.info(`Interrupting current processing to batch new message`);
-        } else {
-          logger.info(`Adding message to existing batch`);
-        }
         this.interruptAndBatch(queuedMessage);
       } else {
         this.queue.push(queuedMessage);
@@ -108,7 +103,6 @@ class MessageQueue {
     // Cancel current request if possible (only if actively processing)
     if (this.processing && this.currentAbortController) {
       this.currentAbortController.abort();
-      logger.info("Aborted current request for batching");
     }
 
     // Add new message to buffer with its promise resolvers
@@ -129,8 +123,6 @@ class MessageQueue {
     this.batchTimer = setTimeout(() => {
       this.processBatchedMessages();
     }, this.BATCH_DELAY_MS);
-
-    logger.info(`Message added to batch. Buffer size: ${this.messageBuffer.length}`);
   }
 
   private async processBatchedMessages(): Promise<void> {
@@ -146,9 +138,6 @@ class MessageQueue {
       logger.info(`Processing batch of ${messages.length} messages`);
       const response = await this.processBatch(messages);
 
-      // Resolve only the LAST message's promise with the content.
-      // Resolve all others with an empty string to unblock them
-      // without triggering a duplicate reply.
       messages.forEach((msg, index) => {
         if (index === messages.length - 1) {
           // This is the last message, it gets the real reply.
@@ -181,10 +170,7 @@ class MessageQueue {
     this.processing = false;
     // Only process next message if we're not in batching mode
     if (this.queue.length > 0 && !this.batchTimer) {
-      logger.info(`Batch processing complete, continuing with ${this.queue.length} remaining messages`);
       setImmediate(() => this.processNext());
-    } else if (this.batchTimer) {
-      logger.info("Batch timer still active, waiting for batch to complete");
     }
   }
 
@@ -221,10 +207,8 @@ class MessageQueue {
             resolve: queuedMessage.resolve,
             reject: queuedMessage.reject,
           });
-          logger.info("Added aborted message to batch buffer");
         }
         this.processing = false;
-        logger.info("Waiting for batch timer to complete, not processing next message");
         return; // Don't process next, wait for batch timer
       }
       logger.error("Error processing queued message:", error);

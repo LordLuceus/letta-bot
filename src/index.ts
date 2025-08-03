@@ -41,7 +41,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (message.channel.id === IGNORE_CHANNEL_ID) {
     logger.info(`Ignoring message in channel ${message.channel.id}`);
-    return; // Ignore messages in the specified ignore channel
+    return;
   }
 
   // Check for manual heartbeat command

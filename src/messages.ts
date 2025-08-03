@@ -49,8 +49,6 @@ export const processStream = async (response: Stream<LettaStreamingResponse>): P
             logger.info("🧠 Reasoning:", chunk);
             break;
           case "tool_call_message":
-            logger.info("🔧 Tool call:", chunk);
-            // Handle tool calls for status setting
             if ("toolCall" in chunk && chunk.toolCall.name === "set_status" && chunk.toolCall.arguments) {
               const args: SetStatusArgs = JSON.parse(chunk.toolCall.arguments);
               try {
