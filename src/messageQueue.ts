@@ -27,15 +27,55 @@ const client = new LettaClient({
 });
 const AGENT_ID = process.env.LETTA_AGENT_ID;
 
-export class MessageQueue {
+export class MessageQueueManager {
+  private queues = new Map<string, MessageQueue>();
+
+  // A dedicated queue for non-channel-specific system messages like timers
+  private getSystemQueue(systemId: string): MessageQueue {
+    if (!this.queues.has(systemId)) {
+      this.queues.set(systemId, new MessageQueue(systemId));
+    }
+    return this.queues.get(systemId)!;
+  }
+
+  private getQueueForMessage(discordMessage: OmitPartialGroupDMChannel<Message<boolean>>): MessageQueue {
+    const channelId = discordMessage.channelId;
+    if (!this.queues.has(channelId)) {
+      logger.info(`Creating new message queue for channel: ${channelId}`);
+      this.queues.set(channelId, new MessageQueue(channelId));
+    }
+    return this.queues.get(channelId)!;
+  }
+
+  public enqueue(
+    discordMessage: OmitPartialGroupDMChannel<Message<boolean>>,
+    messageType: MessageType,
+  ): Promise<string> {
+    const queue = this.getQueueForMessage(discordMessage);
+    return queue.enqueue(discordMessage, messageType);
+  }
+
+  public enqueueTimerMessage(): Promise<string> {
+    // Timer messages are not tied to a channel, so they get their own system queue.
+    const timerQueue = this.getSystemQueue("__system__");
+    return timerQueue.enqueueTimerMessage();
+  }
+}
+
+class MessageQueue {
   private queue: QueuedMessage[] = [];
   private processing = false;
   private currentAbortController: AbortController | null = null;
   private messageBuffer: BatchedMessage[] = [];
   private batchTimer: NodeJS.Timeout | null = null;
   private readonly BATCH_DELAY_MS = 150; // Wait 150ms for more messages
+  private readonly channelId: string;
 
-  async enqueue(
+  constructor(channelId: string) {
+    this.channelId = channelId;
+  }
+
+  public enqueue(
     discordMessage: OmitPartialGroupDMChannel<Message<boolean>>,
     messageType: MessageType,
   ): Promise<string> {
@@ -360,7 +400,7 @@ export class MessageQueue {
     }
   }
 
-  async enqueueTimerMessage(): Promise<string> {
+  public enqueueTimerMessage(): Promise<string> {
     return new Promise((resolve, reject) => {
       const timerMessage: QueuedMessage = {
         discordMessage: null,
@@ -424,13 +464,5 @@ export class MessageQueue {
     } finally {
       this.currentAbortController = null;
     }
-  }
-
-  getQueueSize(): number {
-    return this.queue.length;
-  }
-
-  isProcessing(): boolean {
-    return this.processing;
   }
 }

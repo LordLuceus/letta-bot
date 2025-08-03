@@ -3,7 +3,7 @@ import { Stream } from "@letta-ai/letta-client/core";
 import { ActivityType, Message, OmitPartialGroupDMChannel } from "discord.js";
 import { client as discordClient } from "./index";
 import logger from "./logger";
-import { MessageQueue } from "./messageQueue";
+import { MessageQueueManager } from "./messageQueue";
 import { saveStatus } from "./util/statusPersistence";
 
 export enum MessageType {
@@ -13,7 +13,7 @@ export enum MessageType {
   GENERIC = "GENERIC",
 }
 
-const messageQueue = new MessageQueue();
+const messageQueueManager = new MessageQueueManager();
 
 interface SetStatusArgs {
   message: string;
@@ -32,7 +32,7 @@ export function truncateMessage(message: string, maxLength: number): string {
 }
 
 export async function sendTimerMessage(): Promise<string> {
-  return messageQueue.enqueueTimerMessage();
+  return messageQueueManager.enqueueTimerMessage();
 }
 
 export const processStream = async (response: Stream<LettaStreamingResponse>): Promise<string> => {
@@ -101,5 +101,5 @@ export async function sendMessage(
   discordMessageObject: OmitPartialGroupDMChannel<Message<boolean>>,
   messageType: MessageType,
 ): Promise<string> {
-  return messageQueue.enqueue(discordMessageObject, messageType);
+  return messageQueueManager.enqueue(discordMessageObject, messageType);
 }
