@@ -53,8 +53,8 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  if (!message.content || message.content.trim() === "") {
-    logger.info("Received empty message, ignoring.");
+  if (message.system) {
+    logger.info("Received system message, ignoring.");
     return;
   }
 
