@@ -1,8 +1,16 @@
-import { ActivityType, Client, Events, GatewayIntentBits, Partials } from "discord.js";
+import {
+  ActivityType,
+  Client,
+  Events,
+  GatewayIntentBits,
+  Message,
+  OmitPartialGroupDMChannel,
+  Partials,
+} from "discord.js";
 import "dotenv/config";
 import { fireManualHeartbeat, startRandomEventTimer } from "./eventTimer";
 import logger from "./logger";
-import { MessageType, sendMessage } from "./messages";
+import { MessageType, sendMemberJoinMessage, sendMessage } from "./messages";
 import { chunkString } from "./util/chunkString";
 import { loadStatus } from "./util/statusPersistence";
 
@@ -13,6 +21,7 @@ export const client = new Client({
   intents: [
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages,
   ],
@@ -41,6 +50,11 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (message.channel.id === IGNORE_CHANNEL_ID) {
     logger.info(`Ignoring message in channel ${message.channel.id}`);
+    return;
+  }
+
+  if (!message.content || message.content.trim() === "") {
+    logger.info("Received empty message, ignoring.");
     return;
   }
 
@@ -77,10 +91,52 @@ client.on(Events.MessageCreate, async (message) => {
 
   const response = await sendMessage(message, messageType);
 
+  await handleMessageResponse({ message, response });
+});
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  logger.info(`New member joined: ${member.user.tag} (${member.id})`);
+
+  const response = await sendMemberJoinMessage(member);
+
+  await handleMessageResponse({ response });
+});
+
+client.login(process.env.DISCORD_BOT_TOKEN);
+
+async function handleMessageResponse({
+  message,
+  response,
+}: {
+  message?: OmitPartialGroupDMChannel<Message<boolean>> | null;
+  response?: string | null;
+}) {
   if (!response) return;
 
+  // Determine the target channel - use message channel if available, otherwise use general channel
+  let targetChannel = message?.channel;
+  let guild = message?.guild;
+
+  // If message is null/undefined (e.g., member join), find the general channel
+  if (!message && CHANNEL_ID) {
+    // Try to find the guild and general channel from all guilds the bot is in
+    for (const [, botGuild] of client.guilds.cache) {
+      const generalChannel = botGuild.channels.cache.find((channel) => channel.id === CHANNEL_ID);
+      if (generalChannel && generalChannel.isTextBased()) {
+        targetChannel = generalChannel;
+        guild = botGuild;
+        break;
+      }
+    }
+  }
+
+  if (!targetChannel) {
+    logger.error("No target channel available for response");
+    return;
+  }
+
   try {
-    await message.channel.sendTyping();
+    await targetChannel.sendTyping();
   } catch (error) {
     logger.error("Failed to send typing indicator:", error);
   }
@@ -93,7 +149,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     try {
       for (const chunk of chunks) {
-        await message.channel.send(chunk);
+        await targetChannel.send(chunk);
         // Small delay between chunks to avoid rate limiting
         if (chunks.length > 1) {
           await new Promise((resolve) => setTimeout(resolve, 500));
@@ -103,9 +159,9 @@ client.on(Events.MessageCreate, async (message) => {
       logger.error("Failed to send message to channel:", error);
 
       // Try to send to general channel if we're in a guild and failed due to permissions
-      if (message.guild) {
+      if (guild && CHANNEL_ID) {
         try {
-          const generalChannel = message.guild.channels.cache.find((channel) => channel.id === CHANNEL_ID);
+          const generalChannel = guild.channels.cache.find((channel) => channel.id === CHANNEL_ID);
 
           if (generalChannel && generalChannel.isTextBased()) {
             for (const chunk of chunks) {
@@ -124,6 +180,4 @@ client.on(Events.MessageCreate, async (message) => {
       }
     }
   }, delay);
-});
-
-client.login(process.env.DISCORD_BOT_TOKEN);
+}

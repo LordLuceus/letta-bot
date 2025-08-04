@@ -1,6 +1,6 @@
 import { LettaStreamingResponse } from "@letta-ai/letta-client/api/resources/agents/resources/messages/types";
 import { Stream } from "@letta-ai/letta-client/core";
-import { ActivityType, Message, OmitPartialGroupDMChannel } from "discord.js";
+import { ActivityType, GuildMember, Message, OmitPartialGroupDMChannel } from "discord.js";
 import { client as discordClient } from "./index";
 import logger from "./logger";
 import { MessageQueueManager } from "./messageQueue";
@@ -100,4 +100,8 @@ export async function sendMessage(
   messageType: MessageType,
 ): Promise<string> {
   return messageQueueManager.enqueue(discordMessageObject, messageType);
+}
+
+export async function sendMemberJoinMessage(member: GuildMember): Promise<string> {
+  return messageQueueManager.enqueueMemberJoinMessage(member);
 }

@@ -1,5 +1,5 @@
 import { LettaClient } from "@letta-ai/letta-client";
-import { Message, OmitPartialGroupDMChannel } from "discord.js";
+import { GuildMember, Message, OmitPartialGroupDMChannel } from "discord.js";
 import logger from "./logger";
 import { MessageType, processStream, truncateMessage } from "./messages";
 import { getAttachmentDescription } from "./util/attachments";
@@ -7,6 +7,7 @@ import { processLinks } from "./util/linkPreviews";
 
 interface QueuedMessage {
   discordMessage: OmitPartialGroupDMChannel<Message<boolean>> | null;
+  memberJoinData?: GuildMember;
   messageType: MessageType;
   timestamp: number;
   resolve: (response: string) => void;
@@ -15,6 +16,7 @@ interface QueuedMessage {
 
 interface BatchedMessage {
   discordMessage: OmitPartialGroupDMChannel<Message<boolean>> | null;
+  memberJoinData?: GuildMember;
   messageType: MessageType;
   timestamp: number;
   resolve: (response: string) => void;
@@ -59,6 +61,12 @@ export class MessageQueueManager {
     // Timer messages are not tied to a channel, so they get their own system queue.
     const timerQueue = this.getSystemQueue("__system__");
     return timerQueue.enqueueTimerMessage();
+  }
+
+  public enqueueMemberJoinMessage(member: GuildMember): Promise<string> {
+    // Member join messages are not tied to a specific channel, use system queue
+    const systemQueue = this.getSystemQueue("__system__");
+    return systemQueue.enqueueMemberJoinMessage(member);
   }
 }
 
@@ -108,6 +116,7 @@ class MessageQueue {
     // Add new message to buffer with its promise resolvers
     this.messageBuffer.push({
       discordMessage: newMessage.discordMessage,
+      memberJoinData: newMessage.memberJoinData,
       messageType: newMessage.messageType,
       timestamp: newMessage.timestamp,
       resolve: newMessage.resolve,
@@ -186,12 +195,15 @@ class MessageQueue {
       logger.info(`Processing message from queue. Remaining: ${this.queue.length}`);
       let response: string;
 
-      if (queuedMessage.discordMessage === null) {
+      if (queuedMessage.discordMessage === null && !queuedMessage.memberJoinData) {
         // This is a timer message
         response = await this.processTimerMessage();
+      } else if (queuedMessage.memberJoinData) {
+        // This is a member join message
+        response = await this.processMemberJoinMessage(queuedMessage.memberJoinData);
       } else {
         // This is a regular Discord message
-        response = await this.processMessage(queuedMessage.discordMessage, queuedMessage.messageType);
+        response = await this.processMessage(queuedMessage.discordMessage!, queuedMessage.messageType);
       }
 
       queuedMessage.resolve(response);
@@ -199,9 +211,10 @@ class MessageQueue {
       if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
         logger.info("Request was aborted for batching");
         // Add the interrupted message to the batch buffer
-        if (queuedMessage.discordMessage !== null) {
+        if (queuedMessage.discordMessage !== null || queuedMessage.memberJoinData) {
           this.messageBuffer.unshift({
             discordMessage: queuedMessage.discordMessage,
+            memberJoinData: queuedMessage.memberJoinData,
             messageType: queuedMessage.messageType,
             timestamp: queuedMessage.timestamp,
             resolve: queuedMessage.resolve,
@@ -227,10 +240,23 @@ class MessageQueue {
     // Create combined content from all messages into a single message
     const messageContents = [];
 
-    for (const { discordMessage, messageType } of messages) {
-      if (discordMessage === null) continue; // Skip timer messages in batches
+    for (const { discordMessage, memberJoinData, messageType } of messages) {
+      if (discordMessage === null && !memberJoinData) continue; // Skip timer messages in batches
 
-      const content = await this.formatDiscordMessage(discordMessage, messageType);
+      let content: string;
+      if (memberJoinData) {
+        // Format member join message
+        const memberInfo = `${memberJoinData.displayName} (id=${memberJoinData.id})`;
+        const guildName = memberJoinData.guild.name;
+        const joinedAt = memberJoinData.joinedAt?.toISOString() || "unknown";
+        content = `[EVENT] A new member has joined the Discord server "${guildName}": ${memberInfo}. They joined at ${joinedAt}.`;
+      } else if (discordMessage) {
+        // Format regular Discord message
+        content = await this.formatDiscordMessage(discordMessage, messageType);
+      } else {
+        continue; // Skip if neither message type is present
+      }
+
       messageContents.push(content);
     }
 
@@ -401,6 +427,24 @@ class MessageQueue {
     });
   }
 
+  public enqueueMemberJoinMessage(member: GuildMember): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const memberJoinMessage: QueuedMessage = {
+        discordMessage: null,
+        memberJoinData: member,
+        messageType: MessageType.GENERIC,
+        timestamp: Date.now(),
+        resolve,
+        reject,
+      };
+
+      // Member join messages don't interrupt processing
+      this.queue.push(memberJoinMessage);
+      logger.info(`Member join message queued for ${member.displayName}. Queue size: ${this.queue.length}`);
+      this.processNext();
+    });
+  }
+
   private async processTimerMessage(): Promise<string> {
     if (!AGENT_ID) {
       logger.error("Error: LETTA_AGENT_ID is not set");
@@ -441,6 +485,60 @@ class MessageQueue {
     } catch (error) {
       if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
         logger.info("Timer request was aborted");
+        throw error;
+      }
+      logger.error(error);
+      return "";
+    } finally {
+      this.currentAbortController = null;
+    }
+  }
+
+  private async processMemberJoinMessage(member: GuildMember): Promise<string> {
+    if (!AGENT_ID) {
+      logger.error("Error: LETTA_AGENT_ID is not set");
+      return "";
+    }
+
+    const memberInfo = `${member.displayName} (id=${member.id})`;
+    const guildName = member.guild.name;
+    const joinedAt = member.joinedAt?.toISOString() || "unknown";
+
+    const lettaMessage = {
+      role: "user" as const,
+      content: `[EVENT] A new member has joined the Discord server "${guildName}": ${memberInfo}. They joined at ${joinedAt}.`,
+    };
+
+    try {
+      logger.info(
+        `🛜 Sending member join message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
+      );
+
+      // Create new abort controller for this request
+      this.currentAbortController = new AbortController();
+
+      const response = await client.agents.messages.createStream(
+        AGENT_ID,
+        {
+          messages: [lettaMessage],
+          assistantMessageToolName: "send_response",
+          assistantMessageToolKwarg: "message",
+          useAssistantMessage: true,
+        },
+        {
+          timeoutInSeconds: 300,
+          abortSignal: this.currentAbortController.signal,
+        },
+      );
+
+      if (response) {
+        return await processStream(response);
+      }
+
+      return "";
+    } catch (error) {
+      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
+        logger.info("Member join request was aborted");
         throw error;
       }
       logger.error(error);
