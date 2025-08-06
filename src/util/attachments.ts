@@ -26,8 +26,7 @@ async function transcribeAudio(url: string, contentType: string): Promise<string
       diarize: true,
     });
 
-    const result =
-      typeof transcription === "string" ? transcription : transcription.text || "[No transcription available]";
+    const result = "text" in transcription ? transcription.text : "[No transcription available]";
 
     // Cache the result
     transcriptionCache.set(url, result);
