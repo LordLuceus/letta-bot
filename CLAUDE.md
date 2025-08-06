@@ -27,14 +27,20 @@ This is a Discord bot that integrates with Letta AI to create a stateful AI assi
 - Error handling with fallback to general channel
 
 **Message Processing (`src/messages.ts`):**  
-- **Message Queue System**: FIFO queue that processes one Letta request at a time to prevent race conditions
 - `sendMessage()` - Main function that enqueues Discord messages for processing
-- `MessageQueue` class - Handles sequential processing of both Discord messages and timer messages
+- `processStream()` - Processes Letta's streaming response for tool calls and messages
 - Message categorization and context formatting for the AI agent
+- Response processing from Letta's stateful agent API with tool call handling
+
+**Message Queue System (`src/messageQueue.ts`):**
+- **MessageQueueManager**: Manages separate queues per channel plus system queue
+- **MessageQueue**: FIFO queue with batching and interruption capabilities  
+- **Message Batching**: Combines rapid successive messages (150ms window) into single requests
+- **Request Interruption**: Aborts current requests when new messages arrive to batch them
+- **Per-Channel Queues**: Separate processing queues for each Discord channel
+- **System Queue**: Dedicated queue for timer messages and member join events
 - Reply handling that fetches original message content
 - **Media Handling**: Detects attachments (images, audio, video) and includes descriptions
-- Response processing from Letta's stateful agent API
-- Timer messages for periodic agent heartbeats
 
 **Logging (`src/logger.ts`):**
 - Winston-based logging with file and console output
@@ -52,12 +58,14 @@ This is a Discord bot that integrates with Letta AI to create a stateful AI assi
 
 ### Message Queue Architecture
 
-The bot implements a FIFO message queue system to prevent race conditions:
+The bot implements a sophisticated per-channel queue system with batching:
 - **Problem**: Multiple rapid Discord messages could trigger concurrent Letta requests, causing the AI to see messages without proper context
-- **Solution**: `MessageQueue` class processes one message at a time in order
-- **Implementation**: Both Discord messages and timer messages use the same queue
-- **Key Methods**: `enqueue()`, `enqueueTimerMessage()`, `processNext()`, `getQueueStatus()`
-- **Error Handling**: Failed messages don't block the queue; processing continues with the next message
+- **Solution**: `MessageQueueManager` creates separate `MessageQueue` instances per channel
+- **Channel Isolation**: Each Discord channel has its own processing queue to prevent cross-channel interference
+- **Message Batching**: Rapid messages (within 150ms) are combined into single requests to improve efficiency
+- **Request Interruption**: Active requests can be aborted to accommodate new batched messages
+- **System Queue**: Timer and member join messages use a dedicated system queue (`__system__`)
+- **Error Handling**: Aborted requests are re-queued for batching; failed messages don't block processing
 - **Monitoring**: Queue size and processing status are logged for debugging
 
 ### Letta Integration
@@ -71,12 +79,12 @@ The bot uses Letta's stateful agent architecture:
 ### Message Flow
 
 1. Discord message received → Message type detection (DM/mention/reply/generic)
-2. Message enqueued in `MessageQueue` for sequential processing
-3. Queue processes one message at a time to prevent race conditions
+2. Message enqueued in channel-specific `MessageQueue` via `MessageQueueManager`
+3. If rapid messages detected, batch them with 150ms window and abort current request
 4. Context formatting with sender info, channel names, reply context
 5. **Media processing** - Attachment detection and description generation
-6. Send to Letta agent via `client.agents.messages.create()`
-7. Process Letta response for `send_response` tool calls  
+6. Send to Letta agent via streaming `client.agents.messages.createStream()`
+7. Process Letta streaming response for tool calls (`send_response`, `set_status`)
 8. Send response back to Discord with typing simulation
 
 ### Environment Variables
@@ -97,10 +105,13 @@ Optional:
 
 ### Key Implementation Details
 
-- **Message Queue System**: Prevents race conditions by processing one Letta request at a time
+- **Per-Channel Queuing**: Each Discord channel has separate message processing queues
+- **Message Batching**: Rapid messages (150ms window) are combined into single Letta requests
+- **Request Interruption**: Active requests can be aborted to accommodate batching
 - Uses Discord.js partials for DM support
 - Implements attachment description for media files (`getAttachmentDescription()`)
 - Message truncation for reply contexts (100 char limit)
+- Streaming API with `client.agents.messages.createStream()` for real-time responses
 - Structured logging with request/response details and queue status
 - Pre-commit hooks with Husky for linting and formatting
 - In-memory transcription cache to avoid re-processing audio files
@@ -108,7 +119,7 @@ Optional:
 - Discord status persistence using JSON file storage in `data/` directory
 - Chunked message delivery with rate limiting protection
 - Fallback message delivery to general channel on permission errors
-- Queue monitoring available via `getQueueStatus()` function
+- Manual heartbeat command (`!heartbeat`) for triggering agent activity
 
 ### Agent Tools
 
@@ -126,11 +137,13 @@ The bot supports two custom tools that the Letta agent can use:
 ```
 src/
 ├── index.ts              # Main Discord client and event handling
-├── messages.ts           # Core message processing and Letta integration
+├── messages.ts           # Message processing and Letta integration
+├── messageQueue.ts       # Per-channel queuing system with batching
 ├── eventTimer.ts         # Random timer system for agent heartbeats
 ├── logger.ts             # Winston logging configuration
 └── util/
     ├── chunkString.ts    # Message chunking utility
     ├── linkPreviews.ts   # URL metadata extraction
-    └── statusPersistence.ts # Discord status persistence
+    ├── statusPersistence.ts # Discord status persistence
+    └── attachments.ts    # Media file description generation
 ```

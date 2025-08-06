@@ -1,7 +1,7 @@
 {
-  "name": "professor-bot",
+  "name": "letta-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "A Discord bot frontend for a Letta agent",
   "main": "dist/index.js",
   "scripts": {
     "start": "tsc && node .",
@@ -13,9 +13,26 @@
     "format:check": "prettier --check ./src",
     "prepare": "husky || true"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "discord",
+    "bot",
+    "letta",
+    "typescript",
+    "AI",
+    "agent",
+    "elevenlabs",
+    "voice"
+  ],
+  "author": {
+    "email": "lord.luceus@gmail.com",
+    "name": "LordLuceus",
+    "url": "https://github.com/lordluceus/letta-bot"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lordluceus/letta-bot.git"
+  },
+  "license": "MIT",
   "packageManager": "pnpm@10.12.4",
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.7.0",
