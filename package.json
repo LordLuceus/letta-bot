@@ -36,7 +36,7 @@
   "packageManager": "pnpm@10.12.4",
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.8.0",
-    "@letta-ai/letta-client": "^0.1.174",
+    "@letta-ai/letta-client": "^0.1.176",
     "discord.js": "^14.21.0",
     "dotenv": "^17.2.1",
     "winston": "^3.17.0"

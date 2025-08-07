@@ -12,8 +12,8 @@ importers:
         specifier: ^2.8.0
         version: 2.8.0
       '@letta-ai/letta-client':
-        specifier: ^0.1.174
-        version: 0.1.174
+        specifier: ^0.1.176
+        version: 0.1.176
       discord.js:
         specifier: ^14.21.0
         version: 14.21.0
@@ -313,8 +313,8 @@ packages:
     resolution: {integrity: sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==}
     engines: {node: '>=18.18'}
 
-  '@letta-ai/letta-client@0.1.174':
-    resolution: {integrity: sha512-ypmZdoqyidNH6P3skR6aCtt7ibbz3LzU+XlaGp4VKF6QZ6icb40HxFpVtjLqfFUfTug/3v/KJEkktmWBd+/HiQ==}
+  '@letta-ai/letta-client@0.1.176':
+    resolution: {integrity: sha512-ioV+1HL2ugnEuJprdnYfnyD/Pw1vFRuQ4LuO9utFrVOriweRUkDi670pZZlk7929+YKXuOobyj1a5KrM8gZUCA==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1314,7 +1314,7 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.3': {}
 
-  '@letta-ai/letta-client@0.1.174':
+  '@letta-ai/letta-client@0.1.176':
     dependencies:
       form-data: 4.0.4
       form-data-encoder: 4.1.0
