@@ -58,6 +58,12 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
+  // Ignore sticker messages
+  if (!message.content && message.stickers.size > 0) {
+    logger.info("Ignoring sticker message.");
+    return;
+  }
+
   // Check for manual heartbeat command
   if (message.content.trim().toLowerCase() === "!heartbeat") {
     logger.info(`Manual heartbeat command triggered by ${message.author.displayName} (${message.author.id})`);
