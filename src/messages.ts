@@ -48,6 +48,11 @@ export const processStream = async (response: Stream<LettaStreamingResponse>): P
           case "reasoning_message":
             logger.info("🧠 Reasoning:", chunk);
             break;
+          case "assistant_message":
+            if ("content" in chunk && chunk.content) {
+              agentMessageResponse += chunk.content;
+            }
+            break;
           case "tool_call_message":
             if ("toolCall" in chunk && chunk.toolCall.name === "set_status" && chunk.toolCall.arguments) {
               const args: SetStatusArgs = JSON.parse(chunk.toolCall.arguments);
