@@ -131,7 +131,6 @@ export class MessageQueueManager {
 class MessageQueue {
   private queue: QueuedMessage[] = [];
   private processing = false;
-  private currentAbortController: AbortController | null = null;
   private messageBuffer: QueuedMessage[] = [];
   private batchTimer: NodeJS.Timeout | null = null;
   private initialDelayTimer: NodeJS.Timeout | null = null;
@@ -205,7 +204,7 @@ class MessageQueue {
           this.messageBuffer.unshift(...this.queue);
           this.queue = [];
         }
-        this.interruptAndBatch(queuedMessage);
+        this.addToBatch(queuedMessage);
       } else {
         // This is the first message after being idle - start initial delay
         this.queue.push(queuedMessage);
@@ -232,12 +231,7 @@ class MessageQueue {
     }, INITIAL_REQUEST_DELAY_MS);
   }
 
-  private interruptAndBatch(newMessage: QueuedMessage): void {
-    // Cancel current request if possible (only if actively processing)
-    if (this.processing && this.currentAbortController) {
-      this.currentAbortController.abort();
-    }
-
+  private addToBatch(newMessage: QueuedMessage): void {
     // Add new message to buffer
     this.messageBuffer.push(newMessage);
 
@@ -281,16 +275,6 @@ class MessageQueue {
         }
       });
     } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
-        logger.info("Batch processing was aborted to accommodate new messages. Re-batching...");
-        // Prepend the aborted messages to the front of the current buffer.
-        // This ensures they are included in the next batch attempt.
-        this.messageBuffer.unshift(...messages);
-
-        // Don't reject the promises. Just exit and let the new timer,
-        // set by interruptAndBatch, handle the newly combined batch.
-        return;
-      }
       logger.error("Error processing batched messages:", error);
       messages.forEach((msg) => msg.reject(error as Error));
     } finally {
@@ -339,15 +323,6 @@ class MessageQueue {
 
       queuedMessage.resolve(response);
     } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
-        logger.info("Request was aborted for batching");
-        // Add the interrupted message to the batch buffer
-        if (queuedMessage.discordMessage !== null || queuedMessage.memberJoinData) {
-          this.messageBuffer.unshift(queuedMessage);
-        }
-        this.processing = false;
-        return; // Don't process next, wait for batch timer
-      }
       logger.error("Error processing queued message:", error);
       queuedMessage.reject(error as Error);
     } finally {
@@ -402,9 +377,6 @@ class MessageQueue {
         `🛜 Sending batch of ${messageContents.length} messages as single combined message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
       );
 
-      // Create new abort controller for this request
-      this.currentAbortController = new AbortController();
-
       const response = await client.agents.messages.createStream(
         AGENT_ID,
         {
@@ -412,7 +384,6 @@ class MessageQueue {
         },
         {
           timeoutInSeconds: 300,
-          abortSignal: this.currentAbortController.signal,
         },
       );
 
@@ -422,14 +393,8 @@ class MessageQueue {
 
       return "";
     } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
-        logger.info("Batch request was aborted");
-        throw error;
-      }
       logger.error(error);
       return "";
-    } finally {
-      this.currentAbortController = null;
     }
   }
 
@@ -497,9 +462,6 @@ class MessageQueue {
     try {
       logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
 
-      // Create new abort controller for this request
-      this.currentAbortController = new AbortController();
-
       const response = await client.agents.messages.createStream(
         AGENT_ID,
         {
@@ -507,7 +469,6 @@ class MessageQueue {
         },
         {
           timeoutInSeconds: 300,
-          abortSignal: this.currentAbortController.signal,
         },
       );
 
@@ -517,14 +478,8 @@ class MessageQueue {
 
       return "";
     } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
-        logger.info("Request was aborted");
-        throw error;
-      }
       logger.error(error);
       return "";
-    } finally {
-      this.currentAbortController = null;
     }
   }
 
@@ -578,9 +533,6 @@ class MessageQueue {
     try {
       logger.info(`🛜 Sending timer message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
 
-      // Create new abort controller for this request
-      this.currentAbortController = new AbortController();
-
       const response = await client.agents.messages.createStream(
         AGENT_ID,
         {
@@ -588,7 +540,6 @@ class MessageQueue {
         },
         {
           timeoutInSeconds: 300,
-          abortSignal: this.currentAbortController.signal,
         },
       );
 
@@ -598,14 +549,8 @@ class MessageQueue {
 
       return "";
     } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
-        logger.info("Timer request was aborted");
-        throw error;
-      }
       logger.error(error);
       return "";
-    } finally {
-      this.currentAbortController = null;
     }
   }
 
@@ -629,9 +574,6 @@ class MessageQueue {
         `🛜 Sending member join message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
       );
 
-      // Create new abort controller for this request
-      this.currentAbortController = new AbortController();
-
       const response = await client.agents.messages.createStream(
         AGENT_ID,
         {
@@ -639,7 +581,6 @@ class MessageQueue {
         },
         {
           timeoutInSeconds: 300,
-          abortSignal: this.currentAbortController.signal,
         },
       );
 
@@ -649,14 +590,8 @@ class MessageQueue {
 
       return "";
     } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"))) {
-        logger.info("Member join request was aborted");
-        throw error;
-      }
       logger.error(error);
       return "";
-    } finally {
-      this.currentAbortController = null;
     }
   }
 }
