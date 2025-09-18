@@ -13,7 +13,7 @@ export enum MessageType {
   GENERIC = "GENERIC",
 }
 
-const messageQueueManager = new MessageQueueManager();
+export const messageQueueManager = new MessageQueueManager();
 
 interface SetStatusArgs {
   message: string;

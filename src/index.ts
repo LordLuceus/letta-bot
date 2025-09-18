@@ -10,7 +10,7 @@ import {
 import "dotenv/config";
 import { fireManualHeartbeat, startRandomEventTimer } from "./eventTimer";
 import logger from "./logger";
-import { MessageType, sendMemberJoinMessage, sendMessage } from "./messages";
+import { MessageType, messageQueueManager, sendMemberJoinMessage, sendMessage } from "./messages";
 import { chunkString } from "./util/chunkString";
 import { loadStatus } from "./util/statusPersistence";
 
@@ -24,6 +24,8 @@ export const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.GuildMessageTyping,
+    GatewayIntentBits.DirectMessageTyping,
   ],
   partials: [Partials.Channel, Partials.Message],
 });
@@ -106,6 +108,37 @@ client.on(Events.GuildMemberAdd, async (member) => {
   const response = await sendMemberJoinMessage(member);
 
   await handleMessageResponse({ response });
+});
+
+// Handle typing detection with timeout-based stop detection
+const typingTimeouts = new Map<string, NodeJS.Timeout>();
+
+client.on(Events.TypingStart, (typing) => {
+  const channelId = typing.channel.id;
+  const userId = typing.user?.id;
+
+  // Ignore typing from the bot itself or in ignored channels
+  if (!userId || userId === client.user?.id || channelId === IGNORE_CHANNEL_ID) return;
+
+  logger.debug(`User ${typing.user?.tag} (${userId}) started typing in channel ${channelId}`);
+  messageQueueManager.onTypingStart(channelId, userId);
+
+  const key = `${channelId}-${userId}`;
+
+  // Clear existing timeout for this user in this channel
+  const existingTimeout = typingTimeouts.get(key);
+  if (existingTimeout) {
+    clearTimeout(existingTimeout);
+  }
+
+  // Set new timeout (Discord typing indicator lasts ~10 seconds)
+  const timeout = setTimeout(() => {
+    logger.debug(`User ${typing.user?.tag} (${userId}) stopped typing in channel ${channelId} (timeout)`);
+    messageQueueManager.onTypingStop(channelId, userId);
+    typingTimeouts.delete(key);
+  }, 10000); // 10 second timeout
+
+  typingTimeouts.set(key, timeout);
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);

@@ -35,8 +35,8 @@
   "license": "MIT",
   "packageManager": "pnpm@10.12.4",
   "dependencies": {
-    "@elevenlabs/elevenlabs-js": "^2.14.0",
-    "@letta-ai/letta-client": "^0.1.206",
+    "@elevenlabs/elevenlabs-js": "^2.15.0",
+    "@letta-ai/letta-client": "^0.1.211",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.2",
     "winston": "^3.17.0"

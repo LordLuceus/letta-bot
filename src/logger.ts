@@ -9,7 +9,7 @@ const logger = winston.createLogger({
     winston.format.errors({ stack: true }),
     isProduction ? winston.format.json() : winston.format.simple(),
   ),
-  defaultMeta: { service: "professor-bot" },
+  defaultMeta: { service: "letta-bot" },
   transports: [],
 });
 
