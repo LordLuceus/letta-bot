@@ -261,7 +261,11 @@ class MessageQueue {
     this.batchTimer = null;
 
     try {
-      logger.info(`Processing batch of ${messages.length} messages`);
+      const logMessage =
+        messages.length === 1
+          ? `Processing message from batch buffer`
+          : `Processing batch of ${messages.length} messages`;
+      logger.info(logMessage);
       const response = await this.processBatch(messages);
 
       messages.forEach((msg, index) => {
@@ -293,8 +297,10 @@ class MessageQueue {
       if (this.messageBuffer.length > 0) {
         setImmediate(() => this.processBatchedMessages());
       } else if (this.queue.length > 0) {
-        setImmediate(() => this.processNext());
+        // For queued messages, restart the initial delay to respect the timing
+        setImmediate(() => this.startInitialDelay());
       }
+      // If both queues are empty, we're now truly idle and ready for initial delay on next message
     }
   }
 
@@ -373,9 +379,11 @@ class MessageQueue {
     };
 
     try {
-      logger.info(
-        `🛜 Sending batch of ${messageContents.length} messages as single combined message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
-      );
+      const logMessage =
+        messageContents.length === 1
+          ? `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`
+          : `🛜 Sending batch of ${messageContents.length} messages as single combined message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`;
+      logger.info(logMessage);
 
       const response = await client.agents.messages.createStream(
         AGENT_ID,
