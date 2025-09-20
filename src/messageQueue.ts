@@ -142,6 +142,8 @@ class MessageQueue {
   constructor(channelId: string, messageQueueManager: MessageQueueManager) {
     this.channelId = channelId;
     this.messageQueueManager = messageQueueManager;
+    // Initialize typing state based on current manager state
+    this.isTypingActive = messageQueueManager.isChannelTyping(channelId);
   }
 
   public onTypingStateChange(isTyping: boolean): void {
@@ -198,6 +200,9 @@ class MessageQueue {
 
       // Always add to batch if we're in any kind of delay state or processing
       if (this.processing || this.batchTimer || this.initialDelayTimer || this.isTypingActive) {
+        logger.debug(
+          `Message going to batch. State: processing=${this.processing}, batchTimer=${!!this.batchTimer}, initialDelayTimer=${!!this.initialDelayTimer}, isTypingActive=${this.isTypingActive}`,
+        );
         // Move any existing queued messages to the batch first
         if (this.queue.length > 0) {
           logger.debug(`Moving ${this.queue.length} queued messages to batch`);
@@ -291,6 +296,10 @@ class MessageQueue {
     // Clear typing pause timer since we just finished processing
     this.clearTypingPauseTimer();
 
+    logger.debug(
+      `Continue processing. State: batchTimer=${!!this.batchTimer}, initialDelayTimer=${!!this.initialDelayTimer}, isTypingActive=${this.isTypingActive}, queueLength=${this.queue.length}, bufferLength=${this.messageBuffer.length}`,
+    );
+
     // Only process next message if we're not in any delay mode and typing is not active
     if (!this.batchTimer && !this.initialDelayTimer && !this.isTypingActive) {
       // Process batched messages first (they now contain all messages in chronological order)
@@ -299,8 +308,9 @@ class MessageQueue {
       } else if (this.queue.length > 0) {
         // For queued messages, restart the initial delay to respect the timing
         setImmediate(() => this.startInitialDelay());
+      } else {
+        logger.debug(`Queue is now idle and ready for initial delay on next message`);
       }
-      // If both queues are empty, we're now truly idle and ready for initial delay on next message
     }
   }
 
