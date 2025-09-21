@@ -135,6 +135,7 @@ class MessageQueue {
   private batchTimer: NodeJS.Timeout | null = null;
   private initialDelayTimer: NodeJS.Timeout | null = null;
   private typingPauseTimer: NodeJS.Timeout | null = null;
+  private emergencyTimer: NodeJS.Timeout | null = null;
   private isTypingActive = false;
   private readonly channelId: string;
   private readonly messageQueueManager: MessageQueueManager;
@@ -240,6 +241,18 @@ class MessageQueue {
     // Add new message to buffer
     this.messageBuffer.push(newMessage);
 
+    // Set emergency timer if this is the first message in batch to prevent indefinite sticking
+    if (this.messageBuffer.length === 1 && !this.emergencyTimer) {
+      const maxWaitTime = Math.max(BATCH_DELAY_MS, TYPING_PAUSE_DELAY_MS) * 2;
+      this.emergencyTimer = setTimeout(() => {
+        logger.warn(
+          `Emergency timer expired! Force processing ${this.messageBuffer.length} stuck messages after ${maxWaitTime}ms`,
+        );
+        this.emergencyTimer = null;
+        this.processBatchedMessages();
+      }, maxWaitTime);
+    }
+
     // Clear existing batch timer and reset it
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
@@ -250,7 +263,17 @@ class MessageQueue {
       // Before processing, check if we should wait for typing pause
       if (this.messageQueueManager.shouldWaitForTypingPause(this.channelId)) {
         logger.debug(`Batch timer expired but should wait for typing pause delay`);
-        return; // Will be handled by tryProcessingAfterTypingPause
+        // Calculate remaining time to wait and reschedule
+        const timeSinceStop = this.messageQueueManager.getTimeSinceLastTypingStop(this.channelId);
+        const remainingWait = TYPING_PAUSE_DELAY_MS - timeSinceStop;
+
+        if (remainingWait > 0) {
+          logger.debug(`Rescheduling batch timer for ${remainingWait}ms`);
+          this.batchTimer = setTimeout(() => {
+            this.processBatchedMessages();
+          }, remainingWait);
+          return;
+        }
       }
       this.processBatchedMessages();
     }, BATCH_DELAY_MS);
@@ -264,6 +287,12 @@ class MessageQueue {
     const messages = [...this.messageBuffer];
     this.messageBuffer = [];
     this.batchTimer = null;
+
+    // Clear emergency timer since we're processing
+    if (this.emergencyTimer) {
+      clearTimeout(this.emergencyTimer);
+      this.emergencyTimer = null;
+    }
 
     try {
       const logMessage =
