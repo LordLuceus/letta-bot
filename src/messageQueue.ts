@@ -1,4 +1,4 @@
-import { LettaClient } from "@letta-ai/letta-client";
+import { Letta } from "@letta-ai/letta-client";
 import { GuildMember, Message, OmitPartialGroupDMChannel } from "discord.js";
 import logger from "./logger";
 import { MessageType, processStream, truncateMessage } from "./messages";
@@ -14,9 +14,9 @@ interface QueuedMessage {
   reject: (error: Error) => void;
 }
 
-const client = new LettaClient({
-  token: process.env.LETTA_TOKEN || "dummy",
-  baseUrl: process.env.LETTA_BASE_URL,
+const client = new Letta({
+  apiKey: process.env.LETTA_TOKEN || "dummy",
+  baseURL: process.env.LETTA_BASE_URL,
 });
 const AGENT_ID = process.env.LETTA_AGENT_ID;
 
@@ -424,15 +424,10 @@ class MessageQueue {
           : `🛜 Sending batch of ${messageContents.length} messages as single combined message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`;
       logger.info(logMessage);
 
-      const response = await client.agents.messages.createStream(
-        AGENT_ID,
-        {
-          messages: [lettaMessage],
-        },
-        {
-          timeoutInSeconds: 300,
-        },
-      );
+      const response = await client.agents.messages.stream(AGENT_ID, {
+        messages: [lettaMessage],
+        stream_tokens: true,
+      });
 
       if (response) {
         return await processStream(response);
@@ -509,15 +504,10 @@ class MessageQueue {
     try {
       logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
 
-      const response = await client.agents.messages.createStream(
-        AGENT_ID,
-        {
-          messages: [lettaMessage],
-        },
-        {
-          timeoutInSeconds: 300,
-        },
-      );
+      const response = await client.agents.messages.stream(AGENT_ID, {
+        messages: [lettaMessage],
+        stream_tokens: true,
+      });
 
       if (response) {
         return await processStream(response);
@@ -580,15 +570,10 @@ class MessageQueue {
     try {
       logger.info(`🛜 Sending timer message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
 
-      const response = await client.agents.messages.createStream(
-        AGENT_ID,
-        {
-          messages: [lettaMessage],
-        },
-        {
-          timeoutInSeconds: 300,
-        },
-      );
+      const response = await client.agents.messages.stream(AGENT_ID, {
+        messages: [lettaMessage],
+        stream_tokens: true,
+      });
 
       if (response) {
         return await processStream(response);
@@ -621,15 +606,10 @@ class MessageQueue {
         `🛜 Sending member join message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
       );
 
-      const response = await client.agents.messages.createStream(
-        AGENT_ID,
-        {
-          messages: [lettaMessage],
-        },
-        {
-          timeoutInSeconds: 300,
-        },
-      );
+      const response = await client.agents.messages.stream(AGENT_ID, {
+        messages: [lettaMessage],
+        stream_tokens: true,
+      });
 
       if (response) {
         return await processStream(response);
