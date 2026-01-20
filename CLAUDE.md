@@ -50,6 +50,7 @@ This is a Discord bot that integrates with Letta AI to create a stateful AI assi
 - `chunkString.ts` - String chunking utility with delimiter-aware splitting
 - `linkPreviews.ts` - URL metadata extraction with special handling for YouTube, GitHub, and Twitter
 - `statusPersistence.ts` - Discord bot status persistence across restarts using JSON file storage
+- `conversationMappings.ts` - Persists Discord channel → Letta conversation ID mappings
 
 **Event Timer (`src/eventTimer.ts`):**
 - Configurable random timer system for periodic agent heartbeat messages
@@ -70,9 +71,11 @@ The bot implements a sophisticated per-channel queue system with batching:
 
 ### Letta Integration
 
-The bot uses Letta's stateful agent architecture:
-- Agents maintain conversation history server-side
-- Messages are sent individually (not full conversation history)
+The bot uses Letta's Conversations API for message isolation:
+- **Per-Channel Conversations**: Each Discord channel maps to a separate Letta conversation
+- **Conversation Persistence**: Channel → Conversation ID mappings stored in `data/conversation-mappings.json`
+- **Shared Memory**: Agent memory blocks and tools are shared across all conversations
+- **Isolated History**: Each conversation maintains its own message history
 - Responses contain multiple message types: assistant, reasoning, tool calls, tool returns
 - Tool responses are parsed from `send_response` tool calls
 
@@ -80,12 +83,13 @@ The bot uses Letta's stateful agent architecture:
 
 1. Discord message received → Message type detection (DM/mention/reply/generic)
 2. Message enqueued in channel-specific `MessageQueue` via `MessageQueueManager`
-3. If rapid messages detected, batch them with 150ms window and abort current request
+3. If rapid messages detected, batch them with 1-second window
 4. Context formatting with sender info, channel names, reply context
 5. **Media processing** - Attachment detection and description generation
-6. Send to Letta agent via streaming `client.agents.messages.createStream()`
-7. Process Letta streaming response for tool calls (`send_response`, `set_status`)
-8. Send response back to Discord with typing simulation
+6. Get or create Letta conversation for the channel (`getOrCreateConversation()`)
+7. Send to Letta via streaming `client.conversations.messages.create()`
+8. Process Letta streaming response for tool calls (`send_response`, `set_status`)
+9. Send response back to Discord with typing simulation
 
 ### Environment Variables
 
@@ -105,13 +109,14 @@ Optional:
 
 ### Key Implementation Details
 
+- **Letta Conversations**: Each Discord channel maps to its own Letta conversation for message isolation
+- **Conversation Persistence**: Channel → conversation mappings stored in `data/conversation-mappings.json`
 - **Per-Channel Queuing**: Each Discord channel has separate message processing queues
-- **Message Batching**: Rapid messages (150ms window) are combined into single Letta requests
-- **Request Interruption**: Active requests can be aborted to accommodate batching
+- **Message Batching**: Rapid messages (1-second window) are combined into single Letta requests
 - Uses Discord.js partials for DM support
 - Implements attachment description for media files (`getAttachmentDescription()`)
 - Message truncation for reply contexts (100 char limit)
-- Streaming API with `client.agents.messages.createStream()` for real-time responses
+- Streaming API with `client.conversations.messages.create()` for real-time responses
 - Structured logging with request/response details and queue status
 - Pre-commit hooks with Husky for linting and formatting
 - In-memory transcription cache to avoid re-processing audio files
@@ -143,6 +148,7 @@ src/
 ├── logger.ts             # Winston logging configuration
 └── util/
     ├── chunkString.ts    # Message chunking utility
+    ├── conversationMappings.ts # Channel → Letta conversation persistence
     ├── linkPreviews.ts   # URL metadata extraction
     ├── statusPersistence.ts # Discord status persistence
     └── attachments.ts    # Media file description generation

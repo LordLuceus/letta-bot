@@ -1,8 +1,14 @@
 import { Letta } from "@letta-ai/letta-client";
+import type { LettaStreamingResponse } from "@letta-ai/letta-client/resources/agents";
 import { GuildMember, Message, OmitPartialGroupDMChannel } from "discord.js";
 import logger from "./logger";
 import { MessageType, processStream, truncateMessage } from "./messages";
 import { getAttachmentDescription } from "./util/attachments";
+import {
+  getOrCreateConversation,
+  initConversationMappings,
+  loadConversationMappings,
+} from "./util/conversationMappings";
 import { processLinks } from "./util/linkPreviews";
 
 interface QueuedMessage {
@@ -15,15 +21,94 @@ interface QueuedMessage {
 }
 
 const client = new Letta({
-  apiKey: process.env.LETTA_TOKEN || "dummy",
+  apiKey: process.env.LETTA_TOKEN || null,
   baseURL: process.env.LETTA_BASE_URL,
 });
 const AGENT_ID = process.env.LETTA_AGENT_ID;
+const SYSTEM_CHANNEL_ID = process.env.CHANNEL_ID;
+
+// Initialize conversation mappings on module load
+if (AGENT_ID) {
+  initConversationMappings(client, AGENT_ID);
+  loadConversationMappings().catch((err) => logger.error("Failed to load conversation mappings:", err));
+}
 
 // Configurable timing constants
 const INITIAL_REQUEST_DELAY_MS = parseInt(process.env.INITIAL_REQUEST_DELAY_MS || "30000", 10); // 30 seconds default
 const BATCH_DELAY_MS = parseInt(process.env.BATCH_DELAY_MS || "1000", 10); // 1 second default
 const TYPING_PAUSE_DELAY_MS = parseInt(process.env.TYPING_PAUSE_DELAY_MS || "2000", 10); // 2 seconds default
+const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// Retry configuration for 409 conflicts
+const MAX_RETRIES = 5;
+const INITIAL_RETRY_DELAY_MS = 1000;
+const MAX_RETRY_DELAY_MS = 30000;
+
+interface LettaMessage {
+  role: "user";
+  content: string;
+}
+
+/**
+ * Sends a message to a Letta conversation with retry logic for 409 conflicts.
+ * When a conversation is already processing a request, the API returns 409.
+ * This function retries with exponential backoff until the request succeeds.
+ */
+async function sendMessageWithRetry(
+  conversationId: string,
+  message: LettaMessage,
+  logPrefix: string,
+): Promise<AsyncIterable<LettaStreamingResponse> | null> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        logger.info(`${logPrefix} Retry attempt ${attempt}/${MAX_RETRIES}`);
+      }
+
+      const response = await client.conversations.messages.create(
+        conversationId,
+        {
+          messages: [message],
+          streaming: true,
+        },
+        { timeout: TIMEOUT_MS },
+      );
+
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+
+      // Check if it's a 409 Conflict error
+      const is409 =
+        (error as { status?: number }).status === 409 ||
+        (error as { message?: string }).message?.includes("409") ||
+        (error as { message?: string }).message?.includes("conflict");
+
+      if (!is409) {
+        // Not a 409, don't retry
+        throw error;
+      }
+
+      if (attempt < MAX_RETRIES) {
+        // Calculate delay with exponential backoff and jitter
+        const baseDelay = Math.min(INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt), MAX_RETRY_DELAY_MS);
+        const jitter = Math.random() * 0.3 * baseDelay; // Add up to 30% jitter
+        const delay = baseDelay + jitter;
+
+        logger.warn(
+          `${logPrefix} Conversation ${conversationId} is busy (409 conflict). Retrying in ${Math.round(delay)}ms...`,
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  logger.error(`${logPrefix} Failed after ${MAX_RETRIES} retries due to 409 conflicts`);
+  throw lastError;
+}
 
 interface TypingState {
   users: Set<string>; // Set of user IDs currently typing
@@ -418,16 +503,16 @@ class MessageQueue {
     };
 
     try {
-      const logMessage =
-        messageContents.length === 1
-          ? `🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`
-          : `🛜 Sending batch of ${messageContents.length} messages as single combined message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`;
-      logger.info(logMessage);
+      // Get conversation ID for this channel
+      const conversationId = await getOrCreateConversation(this.channelId);
 
-      const response = await client.agents.messages.stream(AGENT_ID, {
-        messages: [lettaMessage],
-        stream_tokens: true,
-      });
+      const logPrefix =
+        messageContents.length === 1
+          ? `🛜 [${conversationId}]`
+          : `🛜 [${conversationId}] (batch of ${messageContents.length})`;
+      logger.info(`${logPrefix} Sending message: ${JSON.stringify(lettaMessage)}`);
+
+      const response = await sendMessageWithRetry(conversationId, lettaMessage, logPrefix);
 
       if (response) {
         return await processStream(response);
@@ -502,12 +587,13 @@ class MessageQueue {
     };
 
     try {
-      logger.info(`🛜 Sending message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
+      // Get conversation ID for this channel
+      const conversationId = await getOrCreateConversation(this.channelId);
 
-      const response = await client.agents.messages.stream(AGENT_ID, {
-        messages: [lettaMessage],
-        stream_tokens: true,
-      });
+      const logPrefix = `🛜 [${conversationId}]`;
+      logger.info(`${logPrefix} Sending message: ${JSON.stringify(lettaMessage)}`);
+
+      const response = await sendMessageWithRetry(conversationId, lettaMessage, logPrefix);
 
       if (response) {
         return await processStream(response);
@@ -561,6 +647,11 @@ class MessageQueue {
       return "";
     }
 
+    if (!SYSTEM_CHANNEL_ID) {
+      logger.error("Error: CHANNEL_ID is not set for timer messages");
+      return "";
+    }
+
     const lettaMessage = {
       role: "user" as const,
       content:
@@ -568,12 +659,13 @@ class MessageQueue {
     };
 
     try {
-      logger.info(`🛜 Sending timer message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`);
+      // Use the system channel's conversation for timer messages
+      const conversationId = await getOrCreateConversation(SYSTEM_CHANNEL_ID);
 
-      const response = await client.agents.messages.stream(AGENT_ID, {
-        messages: [lettaMessage],
-        stream_tokens: true,
-      });
+      const logPrefix = `🛜 [${conversationId}] (timer)`;
+      logger.info(`${logPrefix} Sending message: ${JSON.stringify(lettaMessage)}`);
+
+      const response = await sendMessageWithRetry(conversationId, lettaMessage, logPrefix);
 
       if (response) {
         return await processStream(response);
@@ -592,6 +684,11 @@ class MessageQueue {
       return "";
     }
 
+    if (!SYSTEM_CHANNEL_ID) {
+      logger.error("Error: CHANNEL_ID is not set for member join messages");
+      return "";
+    }
+
     const memberInfo = `${member.displayName} (id=${member.id})`;
     const guildName = member.guild.name;
     const joinedAt = member.joinedAt?.toISOString() || "unknown";
@@ -602,14 +699,13 @@ class MessageQueue {
     };
 
     try {
-      logger.info(
-        `🛜 Sending member join message to Letta server (agent=${AGENT_ID}): ${JSON.stringify(lettaMessage)}`,
-      );
+      // Use the system channel's conversation for member join messages
+      const conversationId = await getOrCreateConversation(SYSTEM_CHANNEL_ID);
 
-      const response = await client.agents.messages.stream(AGENT_ID, {
-        messages: [lettaMessage],
-        stream_tokens: true,
-      });
+      const logPrefix = `🛜 [${conversationId}] (member join)`;
+      logger.info(`${logPrefix} Sending message: ${JSON.stringify(lettaMessage)}`);
+
+      const response = await sendMessageWithRetry(conversationId, lettaMessage, logPrefix);
 
       if (response) {
         return await processStream(response);

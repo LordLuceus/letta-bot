@@ -15,3 +15,8 @@ redis.conf
 dist
 logs
 scripts
+.letta/*
+!.letta/settings.json
+.skills
+.claude/*
+!.claude/settings.json
